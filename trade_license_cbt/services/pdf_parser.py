@@ -81,7 +81,7 @@ _CIRCLED_NUMBERS = {
 def parse_pdf(file_bytes: bytes) -> List[Question]:
     """
     PDF 바이트 → Question 리스트.
-    5페이지씩 배치 → 병렬 API 호출로 빠른 처리.
+    과목 헤더를 감지하여 구역별로 나누어 파싱함으로써 정확도를 높임.
     """
     if not file_bytes:
         logger.error("parse_pdf: file_bytes가 비어 있습니다.")
@@ -98,60 +98,38 @@ def parse_pdf(file_bytes: bytes) -> List[Question]:
             logger.error(f"parse_pdf: PDF 열기 실패 - {e}")
             return []
 
-        total_pages = len(doc)
-        logger.info(f"parse_pdf: PDF — 총 {total_pages}페이지")
+        # 모든 텍스트 추출
+        full_text_with_meta = ""
+        for i in range(len(doc)):
+            page_text = doc.load_page(i).get_text()
+            full_text_with_meta += f"\n[PAGE {i+1}]\n{page_text}\n"
 
-        # STEP 1: 모든 페이지 텍스트 수집
-        page_texts: Dict[int, str] = {}
-        for i in range(total_pages):
-            text = doc.load_page(i).get_text().strip()
-            if text and len(text) >= _MIN_TEXT_LENGTH:
-                page_texts[i + 1] = text
-
-        if not page_texts:
-            logger.error("parse_pdf: 유효한 텍스트 페이지 없음.")
-            return []
-
-        skipped = total_pages - len(page_texts)
-        if skipped:
-            logger.info(f"parse_pdf: {skipped}페이지 스킵 (텍스트 부족)")
-
-        # STEP 2: 페이지 배치 생성 ([PAGE X] 마커 포함)
-        page_nums = sorted(page_texts.keys())
-        batches: List[str] = []
-        for i in range(0, len(page_nums), _PAGES_PER_BATCH):
-            batch_pages = page_nums[i:i + _PAGES_PER_BATCH]
-            combined = "\n\n".join(
-                f"[PAGE {pn}]\n{page_texts[pn]}" for pn in batch_pages
-            )
-            batches.append(combined)
-
-        logger.info(f"parse_pdf: {len(page_texts)}페이지 → {len(batches)}개 배치")
-
-        # STEP 3: 배치 처리 (1개면 직접, 2개 이상이면 병렬)
+        # 과목 구역 감지 및 분할
+        # 예: "제 1 과목", "무역규범", "1과목" 등
+        sections = _split_text_by_subject(full_text_with_meta)
+        
         all_questions: List[Question] = []
+        
+        # 각 구역별로 파싱 (병렬 처리)
+        with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
+            future_map = {
+                executor.submit(_extract_questions_from_text, section_text, subject_hint): idx
+                for idx, (subject_hint, section_text) in enumerate(sections)
+            }
+            results = {}
+            for future in as_completed(future_map):
+                idx = future_map[future]
+                try:
+                    results[idx] = future.result()
+                except Exception as e:
+                    logger.error(f"구역 {idx} 처리 실패: {e}")
+                    results[idx] = []
 
-        if len(batches) == 1:
-            all_questions = _extract_questions_from_text(batches[0])
-        else:
-            with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
-                future_map = {
-                    executor.submit(_extract_questions_from_text, batch): idx
-                    for idx, batch in enumerate(batches)
-                }
-                results: Dict[int, List[Question]] = {}
-                for future in as_completed(future_map):
-                    idx = future_map[future]
-                    try:
-                        results[idx] = future.result()
-                    except Exception as e:
-                        logger.error(f"배치 {idx} 처리 실패: {e}")
-                        results[idx] = []
+            for idx in sorted(results.keys()):
+                all_questions.extend(results[idx])
 
-                # 배치 순서대로 합치기
-                for idx in sorted(results.keys()):
-                    all_questions.extend(results[idx])
-
+        # 중복 ID 방지 및 정렬 (전체 순서 보장)
+        # 만약 과목별로 1번부터 시작한다면, 내부적으로 고유 ID를 부여하거나 순서를 유지해야 함.
         logger.info(f"parse_pdf: 총 {len(all_questions)}개 문제 추출 완료")
         return all_questions
 
@@ -162,43 +140,82 @@ def parse_pdf(file_bytes: bytes) -> List[Question]:
 
 def parse_answer_pdf(file_bytes: bytes) -> List[dict]:
     """
-    답지 PDF 바이트 → [{"id": 1, "answer": "④", "explanation": "..."}, ...].
+    답지 PDF 파싱. 과목 구역을 나누어 파싱하여 오매칭 방지.
     """
     if not file_bytes:
-        logger.error("parse_answer_pdf: file_bytes가 비어 있습니다.")
         return []
-    if not _get_client():
-        logger.error("parse_answer_pdf: OpenAI 클라이언트 미초기화.")
-        return []
-
+    
     doc = None
     try:
-        try:
-            doc = fitz.open(stream=file_bytes, filetype="pdf")
-        except Exception as e:
-            logger.error(f"parse_answer_pdf: PDF 열기 실패 - {e}")
-            return []
-
-        all_text_parts: List[str] = []
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        full_text = ""
         for i in range(len(doc)):
-            text = doc.load_page(i).get_text().strip()
-            if text:
-                all_text_parts.append(text)
-
-        if not all_text_parts:
-            logger.error("parse_answer_pdf: 텍스트 없음.")
-            return []
-
-        full_text = "\n\n".join(all_text_parts)
-        logger.info(f"parse_answer_pdf: {len(full_text)}자 텍스트 추출")
-
-        answers = _extract_answers_from_text(full_text)
-        logger.info(f"parse_answer_pdf: {len(answers)}개 답안 추출 완료")
-        return answers
-
+            full_text += f"\n[PAGE {i+1}]\n{doc.load_page(i).get_text()}\n"
+        
+        sections = _split_text_by_subject(full_text)
+        all_answers = []
+        
+        for subject_hint, section_text in sections:
+            answers = _extract_answers_from_text(section_text, subject_hint)
+            all_answers.extend(answers)
+            
+        return all_answers
     finally:
         if doc is not None:
             doc.close()
+
+def _split_text_by_subject(text: str) -> List[tuple[str, str]]:
+    """
+    텍스트에서 과목 경계(예: 제1과목, 2교시 등)를 찾아 (과목명, 내용) 쌍으로 분할.
+    """
+    # 일반적인 과목 패턴: 제 N 과목, [과목명], [제N교시]
+    # 실제 시험지 형식에 맞춰 정규식 조정 가능
+    pattern = r"(제\s?\d\s?과목|제\s?\d\s?교시|[가-힣]{2,10}규범|[가-힣]{2,10}결제|[가-힣]{2,10}영어|[가-힣]{2,10}물류)"
+    splits = re.split(pattern, text)
+    
+    sections = []
+    current_subject = "일반"
+    
+    # 첫 번째 요소는 헤더 이전의 텍스트
+    if splits[0].strip():
+        sections.append((current_subject, splits[0].strip()))
+        
+    for i in range(1, len(splits), 2):
+        current_subject = splits[i].strip()
+        content = splits[i+1].strip() if i+1 < len(splits) else ""
+        sections.append((current_subject, content))
+        
+    return sections
+
+def _extract_questions_from_text(text: str, subject_context: str = "") -> List[Question]:
+    """배치 텍스트 → OpenAI → Question 리스트 (과목 컨텍스트 포함)."""
+    system_prompt = _build_system_prompt()
+    user_input = f"현재 분석 중인 구역/과목: {subject_context}\n\n텍스트 내용:\n{text}"
+
+    raw = _call_openai_with_retry(system_prompt, user_input)
+    if raw is None: return []
+
+    return _parse_response_to_questions(raw) or []
+
+def _extract_answers_from_text(text: str, subject_context: str = "") -> List[dict]:
+    """답지 텍스트 → OpenAI (과목 컨텍스트 포함)."""
+    system_prompt = _build_answer_system_prompt()
+    user_input = f"현재 분석 중인 답안 구역: {subject_context}\n\n텍스트 내용:\n{text}"
+
+    raw = _call_openai_with_retry(system_prompt, user_input)
+    if raw is None: return []
+
+    cleaned = _clean_json_response(raw)
+    try:
+        data = json.loads(cleaned)
+        answers = data.get("answers", data.get("items", []))
+        # 각 답안에 과목 힌트 주입
+        for a in answers:
+            if not a.get("subject"):
+                a["subject"] = subject_context
+        return answers
+    except:
+        return []
 
 
 def merge_answers(questions: List[Question], answers: List[dict]) -> List[Question]:
