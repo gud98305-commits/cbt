@@ -11,7 +11,16 @@ import threading
 import logging
 import traceback
 
-from api.config import BASE_DIR, LOG_FILE, DEFAULT_HOST
+# ── 패키지 경로 설정 (반드시 최상단) ──────────────────────────────────────────
+# 실행 경로를 BASE_DIR로 설정하고 trade_license_cbt를 모듈 경로에 추가합니다.
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_APP_DIR = os.path.join(_BASE_DIR, "trade_license_cbt")
+if _APP_DIR not in sys.path:
+    sys.path.insert(0, _APP_DIR)
+if _BASE_DIR not in sys.path:
+    sys.path.insert(0, _BASE_DIR)
+
+from config import BASE_DIR, LOG_FILE, DEFAULT_HOST
 
 # ── 로깅 설정 ────────────────────────────────────────────────────────────────
 class DummyStream:
@@ -23,14 +32,19 @@ class DummyStream:
 if sys.stdout is None: sys.stdout = DummyStream()
 if sys.stderr is None: sys.stderr = DummyStream()
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[
-        logging.FileHandler(LOG_FILE, encoding='utf-8'),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
+try:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(message)s',
+        handlers=[
+            logging.FileHandler(LOG_FILE, encoding='utf-8'),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+except PermissionError:
+    # 로그 파일 점유 시 콘솔 출력만 사용
+    logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
 # ── 서버 및 네트워크 유틸 ───────────────────────────────────────────────────
@@ -73,7 +87,9 @@ def _start_server(port: int) -> None:
         import uvicorn
         from api.app import create_app
         logger.info(f"Uvicorn 서버 시작 - Port: {port}")
-        uvicorn.run(create_app(), host=DEFAULT_HOST, port=port, log_level="error")
+        # uvicorn 실행 시 factory=True가 필요할 수 있으므로 app 인스턴스 직접 생성
+        app = create_app()
+        uvicorn.run(app, host=DEFAULT_HOST, port=port, log_level="error")
     except Exception:
         logger.error(f"서버 오류 발생:\n{traceback.format_exc()}")
 
@@ -98,5 +114,5 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             logger.info("사용자에 의해 종료되었습니다.")
     else:
-        logger.error("서버 시작 제한 시간을 초과했습니다.")
+        logger.error("서버 시작 제한 시간을 초과했습니다. 작업 관리자에서 기존 프로세스를 종료해 보세요.")
         sys.exit(1)
