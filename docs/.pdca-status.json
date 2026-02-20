@@ -1,0 +1,141 @@
+{
+  "version": "2.0",
+  "lastUpdated": "2026-02-20T05:09:25.907Z",
+  "activeFeatures": [
+    "api",
+    "cbt",
+    "js"
+  ],
+  "primaryFeature": "api",
+  "features": {
+    "api": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-02-20T05:03:44.514Z",
+        "lastUpdated": "2026-02-20T05:09:08.543Z"
+      },
+      "lastFile": "/c/DEV/cbt/api/routes.py"
+    },
+    "cbt": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-02-20T05:05:07.952Z",
+        "lastUpdated": "2026-02-20T05:05:07.952Z"
+      },
+      "lastFile": "/c/DEV/cbt/main.py"
+    },
+    "js": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-02-20T05:06:33.611Z",
+        "lastUpdated": "2026-02-20T05:09:25.906Z"
+      },
+      "lastFile": "/c/DEV/cbt/static/js/exam.js"
+    }
+  },
+  "pipeline": {
+    "currentPhase": 1,
+    "level": "Dynamic",
+    "phaseHistory": []
+  },
+  "session": {
+    "startedAt": "2026-02-20T04:54:47.134Z",
+    "onboardingCompleted": false,
+    "lastActivity": "2026-02-20T05:09:25.907Z"
+  },
+  "history": [
+    {
+      "timestamp": "2026-02-20T05:03:44.514Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-20T05:03:51.105Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-20T05:04:51.404Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-20T05:04:59.152Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-20T05:05:07.952Z",
+      "feature": "cbt",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-20T05:06:33.611Z",
+      "feature": "js",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-20T05:07:19.780Z",
+      "feature": "js",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-20T05:08:03.531Z",
+      "feature": "js",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-20T05:08:39.343Z",
+      "feature": "js",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-20T05:09:02.513Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-20T05:09:08.543Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-20T05:09:15.543Z",
+      "feature": "js",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-20T05:09:25.906Z",
+      "feature": "js",
+      "phase": "do",
+      "action": "updated"
+    }
+  ]
+}
