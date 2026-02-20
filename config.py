@@ -16,3 +16,7 @@ DEFAULT_TIMEOUT = 15.0
 
 # OpenAI 설정
 MODEL_NAME = "gpt-4o-mini"
+
+# PDF 파싱 제한
+MAX_PDF_PAGES = 200
+MAX_SECTION_CHARS = 80000  # ~20K tokens (Korean ~4 chars/token)

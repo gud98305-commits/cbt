@@ -83,10 +83,15 @@ async def api_parse_pdf(file: UploadFile = File(...)):
         raise HTTPException(status_code=413, detail="PDF 파일이 너무 큽니다 (최대 50MB).")
     try:
         questions = await asyncio.to_thread(parse_pdf, file_bytes)
-    except (ValueError, RuntimeError) as e:
+    except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=503,
+            detail="AI 서비스 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+        )
     if not questions:
-        raise HTTPException(status_code=422, detail="문제를 추출하지 못했습니다.")
+        raise HTTPException(status_code=422, detail="문제를 추출하지 못했습니다. PDF 형식을 확인해 주세요.")
 
     session.put("parsed_questions", questions)
     return {"count": len(questions), "ok": True}

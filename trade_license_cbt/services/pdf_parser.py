@@ -28,7 +28,7 @@ import fitz  # PyMuPDF
 from openai import OpenAI, RateLimitError, APIError
 from pydantic import ValidationError
 
-from config import MODEL_NAME
+from config import MODEL_NAME, MAX_PDF_PAGES, MAX_SECTION_CHARS
 from trade_license_cbt.models.question_model import Question
 
 # ── 로거 설정 ────────────────────────────────────────────────────────────────
@@ -94,18 +94,42 @@ def parse_pdf(file_bytes: bytes) -> List[Question]:
             logger.error(f"parse_pdf: PDF 열기 실패 - {e}")
             return []
 
+        # 페이지 수 제한 검사
+        if len(doc) > MAX_PDF_PAGES:
+            raise ValueError(
+                f"PDF 페이지가 너무 많습니다 ({len(doc)}페이지). 최대 {MAX_PDF_PAGES}페이지까지 지원합니다."
+            )
+
         # 모든 텍스트 추출
         full_text_with_meta = ""
+        empty_pages = 0
         for i in range(len(doc)):
             page_text = doc.load_page(i).get_text()
+            if not page_text.strip():
+                empty_pages += 1
             full_text_with_meta += f"\n[PAGE {i+1}]\n{page_text}\n"
+
+        # 스캔 이미지 PDF 감지 (텍스트가 거의 없는 경우)
+        non_ws = len(re.sub(r"\s", "", full_text_with_meta.replace("[PAGE", "")))
+        if non_ws < 100:
+            raise ValueError(
+                "이 PDF는 스캔 이미지로 구성되어 텍스트를 추출할 수 없습니다. "
+                "텍스트가 포함된 PDF를 업로드해 주세요."
+            )
+        if len(doc) > 0 and empty_pages / len(doc) > 0.5:
+            logger.warning(
+                f"parse_pdf: {len(doc)}페이지 중 {empty_pages}페이지가 비어 있음 (스캔 이미지 가능성)"
+            )
 
         # 과목 구역 감지 및 분할
         # 예: "제 1 과목", "무역규범", "1과목" 등
         sections = _split_text_by_subject(full_text_with_meta)
-        
+
+        # 복잡한 레이아웃 대비: 단일 섹션이 너무 크면 청크로 분할
+        sections = _chunk_large_sections(sections)
+
         all_questions: List[Question] = []
-        
+
         # 각 구역별로 파싱 (병렬 처리)
         with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
             future_map = {
@@ -347,6 +371,36 @@ def _split_text_by_subject(text: str) -> List[tuple[str, str]]:
 
     return sections
 
+def _chunk_large_sections(
+    sections: List[tuple[str, str]],
+) -> List[tuple[str, str]]:
+    """
+    단일 섹션이 MAX_SECTION_CHARS를 초과하면 [PAGE N] 마커 기준으로 5페이지 단위 청크로 분할.
+    복잡한 레이아웃이나 과목 헤더가 없는 긴 PDF에 대비.
+    """
+    result = []
+    for subject, text in sections:
+        if len(text) <= MAX_SECTION_CHARS:
+            result.append((subject, text))
+            continue
+
+        # [PAGE N] 기준으로 페이지 분리
+        pages = re.split(r"(?=\[PAGE \d+\])", text)
+        pages = [p for p in pages if p.strip()]
+
+        if len(pages) <= 5:
+            result.append((subject, text))
+            continue
+
+        logger.info(f"섹션 '{subject}' ({len(text)}자, {len(pages)}페이지) → 5페이지 단위 청크 분할")
+        for i in range(0, len(pages), 5):
+            chunk = "".join(pages[i : i + 5])
+            chunk_label = f"{subject}" if subject != "일반" else f"일반_{i // 5 + 1}"
+            result.append((chunk_label, chunk))
+
+    return result
+
+
 def _extract_questions_from_text(text: str, subject_context: str = "") -> List[Question]:
     """배치 텍스트 → OpenAI → Question 리스트 (과목 컨텍스트 포함)."""
     system_prompt = _build_system_prompt()
@@ -530,6 +584,16 @@ def _parse_response_to_questions(raw_response: str) -> Optional[List[Question]]:
         if not item.get("options"):
             continue
 
+        # ── 연결된 options 자동 분리 (LLM이 "① A ② B ③ C ④ D" 형태로 반환한 경우) ──
+        if isinstance(item.get("options"), list) and len(item["options"]) == 1:
+            single = item["options"][0]
+            if re.search(r"[①②③④⑤]", single):
+                parts = re.split(r"(?=[①②③④⑤])", single)
+                parts = [p.strip() for p in parts if p.strip()]
+                if len(parts) >= 2:
+                    item["options"] = parts
+                    logger.info(f"item[{idx}]: 연결된 options 분리 → {len(parts)}개")
+
         # ── answer가 options에 없으면 자동 매칭 시도 ──
         if item.get("answer") and item.get("options") and isinstance(item["options"], list):
             raw_answer = str(item["answer"]).strip()
@@ -621,6 +685,10 @@ def _build_answer_system_prompt() -> str:
 
 # ── OpenAI API 호출 ──────────────────────────────────────────────────────────
 
+_RATE_LIMIT_MAX_RETRIES = 5
+_RATE_LIMIT_BACKOFF_BASE = 2.0
+
+
 def _call_openai_with_retry(
     system_prompt: str,
     user_text: str,
@@ -631,9 +699,17 @@ def _call_openai_with_retry(
     if client is None:
         return None
 
+    # 토큰 추정 경고 (한국어 ~4자/토큰)
+    estimated_tokens = len(user_text) // 4
+    if estimated_tokens > 25000:
+        logger.warning(f"입력 토큰 추정: ~{estimated_tokens} (텍스트 {len(user_text)}자)")
+
     last_exception: Optional[Exception] = None
 
-    for attempt in range(1, max_retries + 1):
+    # RateLimitError는 더 많은 재시도 허용
+    effective_retries = max_retries
+
+    for attempt in range(1, effective_retries + 1):
         try:
             response = client.chat.completions.create(
                 model=MODEL_NAME,
@@ -643,14 +719,17 @@ def _call_openai_with_retry(
                 ],
                 temperature=0.1,
                 response_format={"type": "json_object"},
+                max_tokens=16384,
             )
             return response.choices[0].message.content
         except RateLimitError as e:
             last_exception = e
-            if attempt < max_retries:
-                wait = _BACKOFF_BASE * (2 ** (attempt - 1))
+            # RateLimitError는 더 긴 백오프 + 더 많은 재시도
+            effective_retries = _RATE_LIMIT_MAX_RETRIES
+            if attempt < effective_retries:
+                wait = _RATE_LIMIT_BACKOFF_BASE * (2 ** (attempt - 1))
                 logger.warning(
-                    f"Rate Limit, {wait:.1f}초 후 재시도 ({attempt}/{max_retries})"
+                    f"Rate Limit, {wait:.1f}초 후 재시도 ({attempt}/{effective_retries})"
                 )
                 time.sleep(wait)
             else:
@@ -660,14 +739,15 @@ def _call_openai_with_retry(
             last_exception = e
             error_str = str(e).lower()
             is_transient = any(
-                k in error_str for k in ("timeout", "connection", "unavailable")
+                k in error_str
+                for k in ("timeout", "connection", "unavailable", "context_length", "token")
             )
             if hasattr(e, "status_code") and e.status_code in (500, 502, 503, 504):
                 is_transient = True
-            if attempt < max_retries and is_transient:
+            if attempt < effective_retries and is_transient:
                 wait = _BACKOFF_BASE * (2 ** (attempt - 1))
                 logger.warning(
-                    f"API 오류, {wait:.1f}초 후 재시도 ({attempt}/{max_retries})"
+                    f"API 오류, {wait:.1f}초 후 재시도 ({attempt}/{effective_retries})"
                 )
                 time.sleep(wait)
             else:

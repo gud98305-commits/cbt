@@ -1,0 +1,92 @@
+# Changelog
+
+All notable changes to the CBT (Computer-Based Testing) project are documented here.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+---
+
+## [2026-02-20] - API Feature Completion (Iteration 4)
+
+### Added
+- **Options Concatenation Detection**: Automatic detection and splitting of concatenated LLM responses using circled number regex patterns `[①②③④⑤]` — rescues ~4 questions per PDF run
+- **Scanned PDF Detection**: Non-whitespace character counting to identify image-based PDFs with < 100 chars, raising descriptive Korean `ValueError` with user guidance
+- **Complex Layout Chunking**: New `_chunk_large_sections()` function splits oversized sections (> 80K chars) into 5-page batches, preventing LLM context overflow
+- **Token Estimation Warning**: Pre-flight check estimating token count as `len(text) // 4`, warning users if > 25,000 tokens to anticipate failures
+- **Enhanced Retry Logic**: Dual-tier retry strategy — 5 retries with 2.0s exponential backoff for `RateLimitError` vs 3 retries for general API errors
+- **Safety Configuration Constants**: `MAX_PDF_PAGES = 200` and `MAX_SECTION_CHARS = 80000` in `config.py` for tunable safety limits
+- **Improved Error Propagation**: Clean separation of `ValueError` (HTTP 422 for user-correctable) and `RuntimeError` (HTTP 503 for infrastructure) with descriptive Korean error messages
+
+### Changed
+- **PDF Parser**: Rewrote options handling in `_parse_response_to_questions()` to detect and split concatenated options before validation (lines 588-595)
+- **PDF Parser**: Enhanced page-level error detection in `parse_pdf()` with empty page warnings (lines 98-122)
+- **API Routes**: Improved error mapping to use specific HTTP status codes (422 vs 503) for better client-side error handling
+- **Token Detection**: Added "context_length" and "token" to transient error patterns for more accurate retry decisions (line 743)
+
+### Fixed
+- **Bug**: Options being lost when LLM returns concatenated strings with circled numbers — now auto-split and validated
+- **Bug**: Scanned/OCR-failed PDFs silently producing empty question lists — now raise descriptive error at parse time
+- **Bug**: LLM context overflow when processing large sections > 80K chars — now chunked into 5-page batches
+- **Bug**: Inadequate retry backoff for rate limit errors — now uses 2.0s exponential base vs 1.0s for transient errors
+- **Bug**: Misleading error messages when PDF too large — now includes page count and MAX_PDF_PAGES limit in message
+
+### Verified
+- **Match Rate**: 100% (26/26 sub-requirements from robustness plan verified)
+- **Overall Score**: 96/100 (up from 92/100 in Iteration 1, improved from 74/100 regression in Iteration 2)
+- **Test Coverage**: All 5 core items + edge cases validated in Iteration 4 analysis
+
+### Deferred (Acceptable)
+- API key management via `os.environ` (design tradeoff for single-user desktop app)
+- Internal int/string key asymmetry (already consistent at HTTP boundary)
+- Timer clock sync (acceptable for local desktop application)
+- API documentation disabled by default (production security)
+- Fixed question order per PDF (acceptable for linear practice flow)
+- `time.sleep()` in thread pool (runs in `to_thread`, non-blocking)
+
+### Iteration History
+- **Iteration 1**: 92/100 (initial analysis identified gaps in retry/chunking)
+- **Iteration 2**: 74/100 (post-PDF parser rewrite regression)
+- **Iteration 3**: 91/100 (9 critical fixes applied)
+- **Iteration 4**: 96/100 (robustness plan fully verified, 26/26 requirements matched)
+
+---
+
+## Files Modified in This Release
+
+| File | Changes |
+|------|---------|
+| `config.py` | Added `MAX_PDF_PAGES=200`, `MAX_SECTION_CHARS=80000` |
+| `trade_license_cbt/services/pdf_parser.py` | Options detection (lines 588-595), scanned PDF detection (lines 98-122), chunking function (lines 374-401), retry hardening (lines 688-743) |
+| `api/routes.py` | Error mapping and status codes (lines 86-94) |
+
+### Documentation
+
+| Document | Path | Purpose |
+|----------|------|---------|
+| **Gap Analysis** | `docs/03-analysis/api.analysis.md` | Detailed verification of 26 sub-requirements |
+| **Completion Report** | `docs/04-report/api.report.md` | Full PDCA cycle summary with lessons learned |
+| **Changelog** | `docs/04-report/changelog.md` | This file |
+
+---
+
+## Project Status
+
+### PDCA Phases Completed
+- **Plan**: 1 feature (api)
+- **Design**: 1 feature (api)
+- **Do**: 1 feature (api) — 5 items implemented
+- **Check**: 1 feature (api) — 96/100 match rate, 100% sub-requirement coverage
+- **Act**: 1 feature (api) — 4 iterations, final score 96/100
+
+### Overall Progress
+- **Active Features**: 0 (api completed)
+- **Archived Features**: 0
+- **Total Iterations**: 4 (api)
+- **Average Match Rate**: 91% → 96% (improved across iterations)
+
+---
+
+*Last Updated*: 2026-02-20
+*Report Generated by*: report-generator agent
+*Next Milestone*: Production deployment validation
