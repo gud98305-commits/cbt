@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import streamlit as st
 
-from models.question_model import Question
-from models.session_state import ExamState
-from services.exam_service import is_passed, calculate_subject_scores
+from trade_license_cbt.models.question_model import Question
+from trade_license_cbt.models.session_state import ExamState
+from trade_license_cbt.services.exam_service import is_passed, calculate_subject_scores
 
 
 def _restart_exam() -> None:

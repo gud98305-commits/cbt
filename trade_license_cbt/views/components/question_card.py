@@ -11,7 +11,7 @@ from typing import Optional
 
 import streamlit as st
 
-from models.question_model import Question
+from trade_license_cbt.models.question_model import Question
 
 
 def render(

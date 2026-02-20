@@ -19,7 +19,7 @@ def get(key: str, default=None):
     return _state.get(key, default)
 
 
-def set(key: str, value) -> None:
+def put(key: str, value) -> None:
     _state[key] = value
 
 

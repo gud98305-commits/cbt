@@ -13,9 +13,9 @@ import os
 
 import streamlit as st
 
-from models.question_model import Question
-from models.session_state import ExamState
-from services.pdf_parser import parse_pdf, parse_answer_pdf, merge_answers, reset_client
+from trade_license_cbt.models.question_model import Question
+from trade_license_cbt.models.session_state import ExamState
+from trade_license_cbt.services.pdf_parser import parse_pdf, parse_answer_pdf, merge_answers, reset_client
 
 # ── 샘플 문제 ────────────────────────────────────────────────────────────────
 _SAMPLE_QUESTIONS: list[Question] = [

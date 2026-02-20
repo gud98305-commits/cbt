@@ -28,7 +28,8 @@ import fitz  # PyMuPDF
 from openai import OpenAI, RateLimitError, APIError
 from pydantic import ValidationError
 
-from models.question_model import Question
+from config import MODEL_NAME
+from trade_license_cbt.models.question_model import Question
 
 # ── 로거 설정 ────────────────────────────────────────────────────────────────
 logger = logging.getLogger(__name__)
@@ -36,7 +37,6 @@ if not logger.handlers:
     logging.basicConfig(level=logging.INFO)
 
 # ── OpenAI 클라이언트 (지연 초기화) ──────────────────────────────────────────
-_MODEL_NAME = "gpt-4o-mini"
 _client: Optional[OpenAI] = None
 
 
@@ -50,7 +50,7 @@ def _get_client() -> Optional[OpenAI]:
         return None
     try:
         _client = OpenAI(api_key=api_key)
-        logger.info(f"OpenAI 클라이언트 초기화 완료: {_MODEL_NAME}")
+        logger.info(f"OpenAI 클라이언트 초기화 완료: {MODEL_NAME}")
         return _client
     except Exception as e:
         logger.error(f"OpenAI 클라이언트 초기화 실패: {e}")
@@ -64,8 +64,6 @@ def reset_client() -> None:
 
 
 # ── 상수 ─────────────────────────────────────────────────────────────────────
-_MIN_TEXT_LENGTH = 50
-_PAGES_PER_BATCH = 5        # 한 번에 처리할 페이지 수
 _MAX_WORKERS = 5             # 병렬 API 호출 수
 _MAX_API_RETRIES = 3
 _BACKOFF_BASE = 1.0
@@ -144,7 +142,10 @@ def parse_answer_pdf(file_bytes: bytes) -> List[dict]:
     """
     if not file_bytes:
         return []
-    
+    if not _get_client():
+        logger.error("parse_answer_pdf: OpenAI 클라이언트 미초기화.")
+        return []
+
     doc = None
     try:
         doc = fitz.open(stream=file_bytes, filetype="pdf")
@@ -172,10 +173,13 @@ def _split_text_by_subject(text: str) -> List[tuple[str, str]]:
     # 실제 시험지 형식에 맞춰 정규식 조정 가능
     pattern = r"(제\s?\d\s?과목|제\s?\d\s?교시|[가-힣]{2,10}규범|[가-힣]{2,10}결제|[가-힣]{2,10}영어|[가-힣]{2,10}물류)"
     splits = re.split(pattern, text)
-    
+
+    if not splits:
+        return [("일반", text)]
+
     sections = []
     current_subject = "일반"
-    
+
     # 첫 번째 요소는 헤더 이전의 텍스트
     if splits[0].strip():
         sections.append((current_subject, splits[0].strip()))
@@ -193,9 +197,24 @@ def _extract_questions_from_text(text: str, subject_context: str = "") -> List[Q
     user_input = f"현재 분석 중인 구역/과목: {subject_context}\n\n텍스트 내용:\n{text}"
 
     raw = _call_openai_with_retry(system_prompt, user_input)
-    if raw is None: return []
+    if raw is None:
+        return []
 
-    return _parse_response_to_questions(raw) or []
+    questions = _parse_response_to_questions(raw)
+    if questions is not None:
+        return questions
+
+    # JSON 파싱 실패 → 재시도
+    raw = _call_openai_with_retry(
+        system_prompt + "\n\n⚠️ 반드시 유효한 JSON 객체만 반환하세요.", user_input,
+    )
+    if raw:
+        questions = _parse_response_to_questions(raw)
+        if questions is not None:
+            return questions
+
+    logger.error("_extract_questions_from_text: 2회 모두 실패")
+    return []
 
 def _extract_answers_from_text(text: str, subject_context: str = "") -> List[dict]:
     """답지 텍스트 → OpenAI (과목 컨텍스트 포함)."""
@@ -203,19 +222,40 @@ def _extract_answers_from_text(text: str, subject_context: str = "") -> List[dic
     user_input = f"현재 분석 중인 답안 구역: {subject_context}\n\n텍스트 내용:\n{text}"
 
     raw = _call_openai_with_retry(system_prompt, user_input)
-    if raw is None: return []
+    if raw is None:
+        return []
 
     cleaned = _clean_json_response(raw)
+    if not cleaned:
+        # 재시도
+        raw = _call_openai_with_retry(
+            system_prompt + "\n\n⚠️ 반드시 유효한 JSON 객체만 반환하세요.", user_input,
+        )
+        if raw:
+            cleaned = _clean_json_response(raw)
+        if not cleaned:
+            return []
+
     try:
         data = json.loads(cleaned)
-        answers = data.get("answers", data.get("items", []))
-        # 각 답안에 과목 힌트 주입
-        for a in answers:
-            if not a.get("subject"):
-                a["subject"] = subject_context
-        return answers
-    except:
+    except json.JSONDecodeError:
         return []
+
+    # {"answers": [...]} 또는 [...] 처리
+    if isinstance(data, dict):
+        data = data.get("answers", data.get("items", []))
+    if not isinstance(data, list):
+        return []
+
+    results = []
+    for item in data:
+        if isinstance(item, dict) and "id" in item and "answer" in item:
+            item["id"] = int(item["id"]) if not isinstance(item["id"], int) else item["id"]
+            # 각 답안에 과목 힌트 주입
+            if not item.get("subject"):
+                item["subject"] = subject_context
+            results.append(item)
+    return results
 
 
 def merge_answers(questions: List[Question], answers: List[dict]) -> List[Question]:
@@ -304,29 +344,6 @@ def _match_answer_to_option(answer_text: str, options: List[str]) -> str:
     return ""
 
 
-def _extract_questions_from_text(text: str) -> List[Question]:
-    """배치 텍스트 → OpenAI → Question 리스트."""
-    system_prompt = _build_system_prompt()
-
-    raw = _call_openai_with_retry(system_prompt, text)
-    if raw is None:
-        return []
-
-    questions = _parse_response_to_questions(raw)
-    if questions is not None:
-        return questions
-
-    # JSON 파싱 실패 → 재시도
-    raw = _call_openai_with_retry(
-        system_prompt + "\n\n⚠️ 반드시 유효한 JSON 객체만 반환하세요.", text,
-    )
-    if raw:
-        questions = _parse_response_to_questions(raw)
-        if questions is not None:
-            return questions
-
-    logger.error("_extract_questions_from_text: 2회 모두 실패")
-    return []
 
 
 def _parse_response_to_questions(raw_response: str) -> Optional[List[Question]]:
@@ -377,42 +394,6 @@ def _parse_response_to_questions(raw_response: str) -> Optional[List[Question]]:
     return questions
 
 
-def _extract_answers_from_text(text: str) -> List[dict]:
-    """답지 텍스트 → OpenAI → 답안 dict 리스트."""
-    system_prompt = _build_answer_system_prompt()
-
-    raw = _call_openai_with_retry(system_prompt, text)
-    if raw is None:
-        return []
-
-    cleaned = _clean_json_response(raw)
-    if not cleaned:
-        # 재시도
-        raw = _call_openai_with_retry(
-            system_prompt + "\n\n⚠️ 반드시 유효한 JSON 객체만 반환하세요.", text,
-        )
-        if raw:
-            cleaned = _clean_json_response(raw)
-        if not cleaned:
-            return []
-
-    try:
-        data = json.loads(cleaned)
-    except json.JSONDecodeError:
-        return []
-
-    # {"answers": [...]} 또는 [...] 처리
-    if isinstance(data, dict):
-        data = data.get("answers", data.get("items", []))
-    if not isinstance(data, list):
-        return []
-
-    results = []
-    for item in data:
-        if isinstance(item, dict) and "id" in item and "answer" in item:
-            item["id"] = int(item["id"]) if not isinstance(item["id"], int) else item["id"]
-            results.append(item)
-    return results
 
 
 # ── 프롬프트 ─────────────────────────────────────────────────────────────────
@@ -497,7 +478,7 @@ def _call_openai_with_retry(
     for attempt in range(1, max_retries + 1):
         try:
             response = client.chat.completions.create(
-                model=_MODEL_NAME,
+                model=MODEL_NAME,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_text},

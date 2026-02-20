@@ -7,6 +7,9 @@ let _examState = null;
 let _currentQuestion = null;
 
 async function renderExam(container) {
+  // 이전 타이머 정리
+  if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
+
   // 시험 상태 로드
   try {
     _examState = await api('GET', '/api/exam-state');
@@ -212,6 +215,13 @@ function _updateTimer() {
   const str = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
   display.textContent = str;
   display.className = 'timer-display' + (remaining < 600 ? ' timer-warning' : '');
+
+  // 시간 초과 시 자동 제출
+  if (remaining <= 0) {
+    clearInterval(_timerInterval);
+    showToast('시험 시간이 종료되었습니다. 자동으로 제출합니다.', 'error');
+    _doSubmit();
+  }
 }
 
 // ── 이벤트 바인딩 ────────────────────────────────────────────────────────────

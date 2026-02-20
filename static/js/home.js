@@ -111,11 +111,13 @@ function _attachHomeEvents(status) {
   // API 키 입력 엔터/블러
   const keyInput = document.getElementById('api-key-input');
   if (keyInput) {
+    let _lastSavedKey = '';
     async function saveApiKey() {
       const val = keyInput.value.trim();
-      if (!val) return;
+      if (!val || val === _lastSavedKey) return;
       try {
         await api('POST', '/api/set-api-key', { api_key: val });
+        _lastSavedKey = val;
         showToast('API 키가 저장되었습니다', 'success');
         setTimeout(() => renderHome(document.getElementById('app')), 600);
       } catch (e) {

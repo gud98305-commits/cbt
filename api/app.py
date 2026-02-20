@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-from api.config import STATIC_DIR
+from config import STATIC_DIR
 from api.routes import router
 
 def create_app() -> FastAPI:

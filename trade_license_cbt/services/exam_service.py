@@ -8,7 +8,7 @@ services/exam_service.py
 from collections import defaultdict
 from typing import Dict, List
 
-from models.question_model import Question
+from trade_license_cbt.models.question_model import Question
 
 
 def calculate_score(

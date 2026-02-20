@@ -2,6 +2,7 @@
 api/routes.py — FastAPI 엔드포인트
 """
 
+import asyncio
 import os
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel
@@ -35,6 +36,9 @@ class SaveAnswerBody(BaseModel):
 class StartExamBody(BaseModel):
     subjects: list[str] = []
 
+class NavigateBody(BaseModel):
+    index: int = 0
+
 
 # ── 헬퍼 ─────────────────────────────────────────────────────────────────────
 
@@ -55,7 +59,7 @@ def _question_to_dict(q: Question) -> dict:
 
 @router.post("/api/set-api-key")
 async def set_api_key(body: ApiKeyBody):
-    session.set("api_key", body.api_key)
+    session.put("api_key", body.api_key)
     os.environ["OPENAI_API_KEY"] = body.api_key
     reset_client()
     return {"ok": True}
@@ -67,11 +71,11 @@ async def api_parse_pdf(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="API 키가 설정되지 않았습니다.")
     
     file_bytes = await file.read()
-    questions = parse_pdf(file_bytes)
+    questions = await asyncio.to_thread(parse_pdf, file_bytes)
     if not questions:
         raise HTTPException(status_code=422, detail="문제를 추출하지 못했습니다.")
     
-    session.set("parsed_questions", questions)
+    session.put("parsed_questions", questions)
     return {"count": len(questions), "ok": True}
 
 
@@ -81,11 +85,11 @@ async def api_parse_answer(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="API 키가 설정되지 않았습니다.")
     
     file_bytes = await file.read()
-    answers = parse_answer_pdf(file_bytes)
+    answers = await asyncio.to_thread(parse_answer_pdf, file_bytes)
     if not answers:
         raise HTTPException(status_code=422, detail="답안을 추출하지 못했습니다.")
     
-    session.set("parsed_answers", answers)
+    session.put("parsed_answers", answers)
     return {"count": len(answers), "ok": True}
 
 
@@ -118,8 +122,8 @@ async def start_exam(body: StartExamBody):
     if not final_questions:
         raise HTTPException(status_code=400, detail="선택된 과목의 문제가 없습니다.")
 
-    session.set("questions", final_questions)
-    session.set("exam_state", ExamState())
+    session.put("questions", final_questions)
+    session.put("exam_state", ExamState())
     return {"total": len(final_questions), "ok": True}
 
 
@@ -128,14 +132,14 @@ async def retry_exam():
     questions: list[Question] = session.get("questions", [])
     if not questions:
         raise HTTPException(status_code=400, detail="문제가 없습니다.")
-    session.set("exam_state", ExamState())
+    session.put("exam_state", ExamState())
     return {"total": len(questions), "ok": True}
 
 
 @router.post("/api/start-sample-exam")
 async def start_sample_exam():
-    session.set("questions", SAMPLE_QUESTIONS)
-    session.set("exam_state", ExamState())
+    session.put("questions", SAMPLE_QUESTIONS)
+    session.put("exam_state", ExamState())
     return {"total": len(SAMPLE_QUESTIONS), "ok": True}
 
 
@@ -177,7 +181,9 @@ async def save_answer(body: SaveAnswerBody):
     exam_state: ExamState = session.get("exam_state")
     if not exam_state:
         raise HTTPException(status_code=404, detail="시험 세션이 없습니다.")
-    
+    if exam_state.is_submitted:
+        raise HTTPException(status_code=400, detail="이미 제출된 시험입니다.")
+
     if body.answer:
         exam_state.user_answers[body.question_id] = body.answer
     else:
@@ -186,13 +192,15 @@ async def save_answer(body: SaveAnswerBody):
 
 
 @router.post("/api/navigate")
-async def navigate(body: dict):
+async def navigate(body: NavigateBody):
     exam_state: ExamState = session.get("exam_state")
     questions = session.get("questions", [])
     if not exam_state:
         raise HTTPException(status_code=404, detail="시험 세션이 없습니다.")
-    
-    idx = max(0, min(body.get("index", 0), len(questions) - 1))
+    if exam_state.is_submitted:
+        raise HTTPException(status_code=400, detail="이미 제출된 시험입니다.")
+
+    idx = max(0, min(body.index, len(questions) - 1))
     exam_state.current_quest_index = idx
     return {"index": idx, "ok": True}
 
@@ -208,8 +216,8 @@ async def submit_exam():
     score = calculate_score(questions, exam_state.user_answers)
     incorrect = get_incorrect_questions(questions, exam_state.user_answers)
     
-    session.set("final_score", score)
-    session.set("incorrect_questions", incorrect)
+    session.put("final_score", score)
+    session.put("incorrect_questions", incorrect)
     return {"score": score, "ok": True}
 
 
@@ -222,6 +230,8 @@ async def get_results():
 
     if not questions or not exam_state:
         raise HTTPException(status_code=404, detail="결과 정보가 없습니다.")
+    if not exam_state.is_submitted:
+        raise HTTPException(status_code=400, detail="시험이 아직 제출되지 않았습니다.")
 
     incorrect_data = []
     for q in incorrect:

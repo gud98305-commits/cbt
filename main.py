@@ -14,9 +14,6 @@ import traceback
 # ── 패키지 경로 설정 (반드시 최상단) ──────────────────────────────────────────
 # 실행 경로를 BASE_DIR로 설정하고 trade_license_cbt를 모듈 경로에 추가합니다.
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-_APP_DIR = os.path.join(_BASE_DIR, "trade_license_cbt")
-if _APP_DIR not in sys.path:
-    sys.path.insert(0, _APP_DIR)
 if _BASE_DIR not in sys.path:
     sys.path.insert(0, _BASE_DIR)
 

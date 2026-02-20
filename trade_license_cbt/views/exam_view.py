@@ -15,11 +15,11 @@ from __future__ import annotations
 
 import streamlit as st
 
-from models.session_state import ExamState
-from services.exam_service import calculate_score, get_incorrect_questions
-from views.components import question_card as qcard
-from views.components import sidebar as nav
-from views.components import timer as tmr
+from trade_license_cbt.models.session_state import ExamState
+from trade_license_cbt.services.exam_service import calculate_score, get_incorrect_questions
+from trade_license_cbt.views.components import question_card as qcard
+from trade_license_cbt.views.components import sidebar as nav
+from trade_license_cbt.views.components import timer as tmr
 
 
 def _go_to_result() -> None:
