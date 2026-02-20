@@ -57,10 +57,18 @@ def _question_to_dict(q: Question) -> dict:
 
 # ── 엔드포인트 ───────────────────────────────────────────────────────────────
 
+MAX_PDF_SIZE = 50 * 1024 * 1024  # 50 MB
+
+
 @router.post("/api/set-api-key")
 async def set_api_key(body: ApiKeyBody):
-    session.put("api_key", body.api_key)
-    os.environ["OPENAI_API_KEY"] = body.api_key
+    key = body.api_key.strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="API 키가 비어 있습니다.")
+    if not key.startswith(("sk-", "sk-proj-")):
+        raise HTTPException(status_code=400, detail="올바른 OpenAI API 키 형식이 아닙니다 (sk-... 형식).")
+    session.put("api_key", key)
+    os.environ["OPENAI_API_KEY"] = key
     reset_client()
     return {"ok": True}
 
@@ -69,12 +77,17 @@ async def set_api_key(body: ApiKeyBody):
 async def api_parse_pdf(file: UploadFile = File(...)):
     if not session.get("api_key"):
         raise HTTPException(status_code=400, detail="API 키가 설정되지 않았습니다.")
-    
+
     file_bytes = await file.read()
-    questions = await asyncio.to_thread(parse_pdf, file_bytes)
+    if len(file_bytes) > MAX_PDF_SIZE:
+        raise HTTPException(status_code=413, detail="PDF 파일이 너무 큽니다 (최대 50MB).")
+    try:
+        questions = await asyncio.to_thread(parse_pdf, file_bytes)
+    except (ValueError, RuntimeError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
     if not questions:
         raise HTTPException(status_code=422, detail="문제를 추출하지 못했습니다.")
-    
+
     session.put("parsed_questions", questions)
     return {"count": len(questions), "ok": True}
 
@@ -83,12 +96,17 @@ async def api_parse_pdf(file: UploadFile = File(...)):
 async def api_parse_answer(file: UploadFile = File(...)):
     if not session.get("api_key"):
         raise HTTPException(status_code=400, detail="API 키가 설정되지 않았습니다.")
-    
+
     file_bytes = await file.read()
-    answers = await asyncio.to_thread(parse_answer_pdf, file_bytes)
+    if len(file_bytes) > MAX_PDF_SIZE:
+        raise HTTPException(status_code=413, detail="PDF 파일이 너무 큽니다 (최대 50MB).")
+    try:
+        answers = await asyncio.to_thread(parse_answer_pdf, file_bytes)
+    except (ValueError, RuntimeError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
     if not answers:
         raise HTTPException(status_code=422, detail="답안을 추출하지 못했습니다.")
-    
+
     session.put("parsed_answers", answers)
     return {"count": len(answers), "ok": True}
 

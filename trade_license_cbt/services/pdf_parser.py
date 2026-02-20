@@ -82,11 +82,9 @@ def parse_pdf(file_bytes: bytes) -> List[Question]:
     과목 헤더를 감지하여 구역별로 나누어 파싱함으로써 정확도를 높임.
     """
     if not file_bytes:
-        logger.error("parse_pdf: file_bytes가 비어 있습니다.")
-        return []
+        raise ValueError("PDF 파일이 비어 있습니다.")
     if not _get_client():
-        logger.error("parse_pdf: OpenAI 클라이언트 미초기화.")
-        return []
+        raise RuntimeError("OpenAI API 키가 올바르지 않거나 클라이언트 초기화에 실패했습니다.")
 
     doc = None
     try:
@@ -138,12 +136,14 @@ def parse_pdf(file_bytes: bytes) -> List[Question]:
 
 def parse_answer_pdf(file_bytes: bytes) -> List[dict]:
     """
-    답지 PDF 파싱. 과목 구역을 나누어 파싱하여 오매칭 방지.
+    답지 PDF 파싱. 결정적 테이블 파싱을 우선 시도하고, 실패 시 OpenAI 폴백.
+
+    국제무역사 답지 형식:
+      - 4개 과목 헤더 (무역규범, 무역결제, 무역계약, 무역영어)
+      - 각 과목 30문제, 5문제씩 그룹 (숫자 5개 + 원문자 정답 5개)
+      - 4과목이 순서대로 반복
     """
     if not file_bytes:
-        return []
-    if not _get_client():
-        logger.error("parse_answer_pdf: OpenAI 클라이언트 미초기화.")
         return []
 
     doc = None
@@ -151,44 +151,200 @@ def parse_answer_pdf(file_bytes: bytes) -> List[dict]:
         doc = fitz.open(stream=file_bytes, filetype="pdf")
         full_text = ""
         for i in range(len(doc)):
-            full_text += f"\n[PAGE {i+1}]\n{doc.load_page(i).get_text()}\n"
-        
-        sections = _split_text_by_subject(full_text)
+            full_text += doc.load_page(i).get_text() + "\n"
+
+        # 1차: 결정적 테이블 파싱 시도
+        answers = _parse_answer_table_deterministic(full_text)
+        if answers:
+            logger.info(f"parse_answer_pdf: 결정적 파싱 성공 — {len(answers)}개 답안")
+            return answers
+
+        # 2차: OpenAI 폴백
+        logger.info("parse_answer_pdf: 결정적 파싱 실패, OpenAI 폴백")
+        if not _get_client():
+            logger.error("parse_answer_pdf: OpenAI 클라이언트 미초기화.")
+            return []
+
+        tagged_text = ""
+        for i in range(len(doc)):
+            tagged_text += f"\n[PAGE {i+1}]\n{doc.load_page(i).get_text()}\n"
+
+        sections = _split_text_by_subject(tagged_text)
         all_answers = []
-        
         for subject_hint, section_text in sections:
-            answers = _extract_answers_from_text(section_text, subject_hint)
-            all_answers.extend(answers)
-            
+            ans = _extract_answers_from_text(section_text, subject_hint)
+            all_answers.extend(ans)
         return all_answers
     finally:
         if doc is not None:
             doc.close()
 
+
+def _parse_answer_table_deterministic(text: str) -> List[dict]:
+    """
+    답지 테이블을 결정적으로 파싱.
+    PyMuPDF가 추출하는 순서: 4과목 헤더 → 문제번호/정답 라벨 →
+    [5개 숫자, 5개 원문자] × 4과목 반복 (5문제 단위 행 그룹)
+    """
+    # 과목 헤더 감지
+    subject_names = ["무역규범", "무역결제", "무역계약", "무역영어"]
+    found_subjects = []
+    for name in subject_names:
+        # 공백 허용 패턴
+        spaced = r"\s*".join(name)
+        if re.search(spaced, text):
+            found_subjects.append(name)
+
+    if len(found_subjects) < 2:
+        return []  # 과목이 2개 미만이면 이 형식이 아님
+
+    num_subjects = len(found_subjects)
+
+    # 원문자 정답 패턴
+    circled = {"①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"}
+
+    # 헤더 영역 끝 찾기: "문제번호"와 "정답" 라벨이 반복되는 열 헤더 이후부터 데이터
+    # "정답" 라벨의 마지막 출현 위치를 찾아 그 이후부터 파싱
+    lines = text.split("\n")
+    data_start_idx = 0
+    last_label_idx = 0
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped in ("문제번호", "정답"):
+            last_label_idx = idx
+
+    if last_label_idx > 0:
+        data_start_idx = last_label_idx + 1
+
+    # 데이터 영역에서 숫자와 원문자만 추출
+    tokens = []
+    for idx in range(data_start_idx, len(lines)):
+        stripped = lines[idx].strip()
+        if not stripped:
+            continue
+        if stripped.isdigit() or stripped in circled:
+            tokens.append(stripped)
+
+    if not tokens:
+        return []
+
+    # 토큰 파싱: [5숫자, 5원문자] × num_subjects 과목, 반복
+    # 한 "행 그룹"은 num_subjects 과목 × 10 토큰 (5번호 + 5정답)
+    group_size = 5  # 한 과목당 5문제씩 그룹
+    block_size = group_size * 2  # 숫자5 + 정답5 = 10 토큰
+    row_block = block_size * num_subjects  # 4과목 × 10 = 40 토큰
+
+    answers = []
+    pos = 0
+    while pos + row_block <= len(tokens):
+        for subj_idx in range(num_subjects):
+            block_start = pos + subj_idx * block_size
+            numbers = tokens[block_start:block_start + group_size]
+            ans_tokens = tokens[block_start + group_size:block_start + block_size]
+
+            for j in range(group_size):
+                try:
+                    qnum = int(numbers[j])
+                except (ValueError, IndexError):
+                    continue
+                answer_val = ans_tokens[j] if j < len(ans_tokens) else ""
+                answers.append({
+                    "id": qnum,
+                    "subject": found_subjects[subj_idx],
+                    "answer": answer_val,
+                    "explanation": "",
+                })
+        pos += row_block
+
+    # 나머지 토큰 처리 (마지막 불완전 행 그룹)
+    remaining = tokens[pos:]
+    if remaining:
+        rem_pos = 0
+        subj_idx = 0
+        while rem_pos + block_size <= len(remaining) and subj_idx < num_subjects:
+            numbers = remaining[rem_pos:rem_pos + group_size]
+            ans_tokens = remaining[rem_pos + group_size:rem_pos + block_size]
+            for j in range(group_size):
+                try:
+                    qnum = int(numbers[j])
+                except (ValueError, IndexError):
+                    continue
+                answer_val = ans_tokens[j] if j < len(ans_tokens) else ""
+                answers.append({
+                    "id": qnum,
+                    "subject": found_subjects[subj_idx],
+                    "answer": answer_val,
+                    "explanation": "",
+                })
+            rem_pos += block_size
+            subj_idx += 1
+
+    # 검증 1: 최소 과목당 10개 이상이면 유효
+    if len(answers) < num_subjects * 10:
+        logger.warning(f"결정적 파싱: {len(answers)}개만 추출 (기대: {num_subjects * 30})")
+        return []
+
+    # 검증 2: 과목별 문제 번호가 1부터 시작하고 중복 없이 순차적인지 확인
+    from collections import defaultdict
+    subject_ids: dict[str, list[int]] = defaultdict(list)
+    for a in answers:
+        subject_ids[a["subject"]].append(a["id"])
+    for subj, ids in subject_ids.items():
+        if ids != sorted(set(ids)):
+            logger.warning(f"결정적 파싱: {subj} 문제 번호 불일치 — {ids[:10]}...")
+            return []
+
+    logger.info(f"결정적 파싱: {len(answers)}개 답안 추출 ({num_subjects}과목)")
+    return answers
+
 def _split_text_by_subject(text: str) -> List[tuple[str, str]]:
     """
-    텍스트에서 과목 경계(예: 제1과목, 2교시 등)를 찾아 (과목명, 내용) 쌍으로 분할.
+    텍스트에서 과목 경계를 찾아 (과목명, 내용) 쌍으로 분할.
+    실제 PDF에서 과목 헤더가 글자 사이에 공백이 있는 형태로 추출됨:
+      "무 역 규 범", "무 역 결 제", "무 역 계 약", "무 역 영 어"
     """
-    # 일반적인 과목 패턴: 제 N 과목, [과목명], [제N교시]
-    # 실제 시험지 형식에 맞춰 정규식 조정 가능
-    pattern = r"(제\s?\d\s?과목|제\s?\d\s?교시|[가-힣]{2,10}규범|[가-힣]{2,10}결제|[가-힣]{2,10}영어|[가-힣]{2,10}물류)"
+    # 국제무역사 시험 과목 헤더 패턴
+    # PDF에서 과목 헤더는 글자 사이에 수평 공백이 있음: "무 역 규 범"
+    # [^\S\n]+ = 줄바꿈 제외 공백 1개 이상 (본문 내 줄바꿈으로 분리된 단어 오매칭 방지)
+    _SP = r"[^\S\n]+"
+    pattern = (
+        rf"("
+        rf"무{_SP}역{_SP}규{_SP}범|"
+        rf"무{_SP}역{_SP}결{_SP}제|"
+        rf"무{_SP}역{_SP}계{_SP}약|"
+        rf"무{_SP}역{_SP}영{_SP}어|"
+        rf"무{_SP}역{_SP}물{_SP}류|"
+        r"제\s?\d\s?과목|"
+        r"제\s?\d\s?교시"
+        r")"
+    )
     splits = re.split(pattern, text)
 
     if not splits:
         return [("일반", text)]
 
     sections = []
-    current_subject = "일반"
+    pre_header_text = splits[0].strip() if splits[0].strip() else ""
 
-    # 첫 번째 요소는 헤더 이전의 텍스트
-    if splits[0].strip():
-        sections.append((current_subject, splits[0].strip()))
-        
     for i in range(1, len(splits), 2):
-        current_subject = splits[i].strip()
+        # 공백 제거하여 과목명 정규화: "무 역 결 제" → "무역결제"
+        raw_subject = splits[i].strip()
+        normalized = re.sub(r"\s+", "", raw_subject)
         content = splits[i+1].strip() if i+1 < len(splits) else ""
-        sections.append((current_subject, content))
-        
+
+        # 첫 과목 헤더 이전의 텍스트는 첫 과목에 병합
+        # (예: "무 역 규 범" 헤더가 페이지 하단에 있어 첫 문제들이 헤더 앞에 위치)
+        if pre_header_text:
+            content = pre_header_text + "\n" + content
+            pre_header_text = ""
+
+        if content:
+            sections.append((normalized, content))
+
+    # 과목 헤더가 하나도 없으면 전체를 하나의 섹션으로
+    if not sections:
+        return [("일반", text)]
+
     return sections
 
 def _extract_questions_from_text(text: str, subject_context: str = "") -> List[Question]:
@@ -429,7 +585,9 @@ def _build_system_prompt() -> str:
         "4. options 배열 원소 수는 원문 보기 개수와 정확히 일치해야 한다.\n"
         "5. question_text에는 보기를 포함하지 마라.\n"
         "6. 텍스트에 [PAGE X] 마커가 있으면 X를 page_number로 사용하라.\n"
-        "7. answer에는 반드시 options 리스트 안의 전체 텍스트를 넣어라. 정답을 모르면 빈 문자열."
+        "7. answer에는 반드시 options 리스트 안의 전체 텍스트를 넣어라. 정답을 모르면 빈 문자열.\n"
+        "8. subject 필드에는 과목명을 공백 없이 넣어라 (예: '무역규범', '무역결제', '무역계약', '무역영어').\n"
+        "9. id는 과목 내 문제 번호를 사용하라 (과목별 1번부터)."
     )
 
 

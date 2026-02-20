@@ -32,13 +32,18 @@ def calculate_score(
     if not questions:
         return 0.0
 
+    # 정답 정보가 있는 문제만 채점 대상 (answer 없는 문제는 분모에서 제외)
+    scorable = [q for q in questions if q.answer]
+    if not scorable:
+        return 0.0
+
     correct_count = sum(
         1
-        for q in questions
-        if q.answer and user_answers.get(q.id) == q.answer
+        for q in scorable
+        if user_answers.get(q.id) == q.answer
     )
 
-    return round(correct_count / len(questions) * 100, 2)
+    return round(correct_count / len(scorable) * 100, 2)
 
 
 def get_incorrect_questions(

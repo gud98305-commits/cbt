@@ -68,9 +68,22 @@ function showConfirm(title, body, onConfirm) {
   modal.style.display = 'flex';
   const confirmBtn = document.getElementById('modal-confirm');
   const cancelBtn = document.getElementById('modal-cancel');
-  const close = () => { modal.style.display = 'none'; };
-  confirmBtn.onclick = () => { close(); onConfirm(); };
-  cancelBtn.onclick = close;
+  const close = () => {
+    modal.style.display = 'none';
+    confirmBtn.replaceWith(confirmBtn.cloneNode(true));
+    cancelBtn.replaceWith(cancelBtn.cloneNode(true));
+  };
+  confirmBtn.addEventListener('click', () => { close(); onConfirm(); }, { once: true });
+  cancelBtn.addEventListener('click', close, { once: true });
+}
+
+// ── HTML 이스케이프 (공용 유틸리티) ──────────────────────────────────────────
+function _esc(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 // ── 초기 렌더 ────────────────────────────────────────────────────────────────

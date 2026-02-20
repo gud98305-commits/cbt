@@ -283,11 +283,4 @@ function _getSelectedSubjects() {
   return Array.from(boxes).filter(b => b.checked).map(b => b.value);
 }
 
-// ── HTML 이스케이프 ───────────────────────────────────────────────────────────
-function _esc(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+// _esc() is defined in app.js (shared utility)
