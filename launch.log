@@ -1,0 +1,62 @@
+
+[14:45:07] api.app import OK
+[14:45:07] === main.py started ===
+[14:45:07] BASE_DIR: C:\DEV\cbt
+[14:45:07] sys.path: ['C:\\DEV\\cbt\\trade_license_cbt', 'C:\\DEV\\cbt', 'C:\\Users\\user\\miniforge3\\python312.zip']
+[14:45:07] Port selected: 60078
+[14:45:07] Waiting for server...
+[14:45:07] uvicorn starting on port 60078
+[14:45:07] SERVER ERROR: Traceback (most recent call last):
+  File "C:\Users\user\miniforge3\Lib\logging\config.py", line 587, in configure
+    formatters[name] = self.configure_formatter(
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\user\miniforge3\Lib\logging\config.py", line 699, in configure_formatter
+    result = self.configure_custom(config)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\user\miniforge3\Lib\logging\config.py", line 490, in configure_custom
+    result = c(**kwargs)
+             ^^^^^^^^^^^
+  File "C:\Users\user\miniforge3\Lib\site-packages\uvicorn\logging.py", line 42, in __init__
+    self.use_colors = sys.stdout.isatty()
+                      ^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'isatty'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\DEV\cbt\main.py", line 78, in _start_server
+    uvicorn.run(create_app(), host="127.0.0.1", port=port, log_level="error")
+  File "C:\Users\user\miniforge3\Lib\site-packages\uvicorn\main.py", line 541, in run
+    config = Config(
+             ^^^^^^^
+  File "C:\Users\user\miniforge3\Lib\site-packages\uvicorn\config.py", line 280, in __init__
+    self.configure_logging()
+  File "C:\Users\user\miniforge3\Lib\site-packages\uvicorn\config.py", line 372, in configure_logging
+    logging.config.dictConfig(self.log_config)
+  File "C:\Users\user\miniforge3\Lib\logging\config.py", line 942, in dictConfig
+    dictConfigClass(config).configure()
+  File "C:\Users\user\miniforge3\Lib\logging\config.py", line 590, in configure
+    raise ValueError('Unable to configure '
+ValueError: Unable to configure formatter 'default'
+
+[14:45:23] ERROR: Server did not start within 15 seconds
+[15:10:07] api.app import OK
+[15:10:07] === main.py started ===
+[15:10:07] BASE_DIR: C:\DEV\cbt
+[15:10:07] sys.path: ['C:\\DEV\\cbt\\trade_license_cbt', 'C:\\DEV\\cbt', 'C:\\Users\\user\\miniforge3\\python312.zip']
+[15:10:07] Port selected: 58974
+[15:10:07] Waiting for server...
+[15:10:07] uvicorn starting on port 58974
+[15:10:07] Server is up. Opening browser...
+[15:10:07] Opening browser: C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe
+[15:10:07] Keeping server alive...
+[15:11:13] api.app import OK
+[15:11:13] === main.py started ===
+[15:11:13] BASE_DIR: C:\DEV\cbt
+[15:11:13] sys.path: ['C:\\DEV\\cbt\\trade_license_cbt', 'C:\\DEV\\cbt', 'C:\\Users\\user\\miniforge3\\python312.zip']
+[15:11:13] Port selected: 58838
+[15:11:13] Waiting for server...
+[15:11:13] uvicorn starting on port 58838
+[15:11:14] Server is up. Opening browser...
+[15:11:14] Opening browser: C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe
+[15:11:14] Keeping server alive...
