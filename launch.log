@@ -29,3 +29,17 @@ Traceback (most recent call last):
 ModuleNotFoundError: No module named 'models'
 
 2026-02-20 15:26:08,272 [ERROR] 서버 시작 제한 시간을 초과했습니다.
+2026-02-20 15:28:14,300 [INFO] === CBT Mock Test Application Started ===
+2026-02-20 15:28:14,576 [ERROR] 서버 오류 발생:
+Traceback (most recent call last):
+  File "C:\DEV\cbt\main.py", line 74, in _start_server
+    from api.app import create_app
+  File "C:\DEV\cbt\api\app.py", line 11, in <module>
+    from api.routes import router
+  File "C:\DEV\cbt\api\routes.py", line 16, in <module>
+    from trade_license_cbt.services.exam_service import (
+  File "C:\DEV\cbt\trade_license_cbt\services\exam_service.py", line 11, in <module>
+    from models.question_model import Question
+ModuleNotFoundError: No module named 'models'
+
+2026-02-20 15:28:29,513 [ERROR] 서버 시작 제한 시간을 초과했습니다.
