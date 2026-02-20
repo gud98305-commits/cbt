@@ -77,3 +77,25 @@ ModuleNotFoundError: No module named 'models'
 2026-02-20 15:34:41,959 [INFO] Uvicorn 서버 시작 - Port: 60739
 2026-02-20 15:34:42,342 [INFO] 서버 준비 완료. 브라우저를 엽니다.
 2026-02-20 15:34:42,343 [INFO] 브라우저 실행 시도: C:\Program Files\Google\Chrome\Application\chrome.exe
+2026-02-20 15:53:35,212 [INFO] === CBT Mock Test Application Started ===
+2026-02-20 15:53:39,397 [INFO] Uvicorn 서버 시작 - Port: 52739
+2026-02-20 15:53:40,082 [INFO] 서버 준비 완료. 브라우저를 엽니다.
+2026-02-20 15:53:40,084 [INFO] 브라우저 실행 시도: C:\Program Files\Google\Chrome\Application\chrome.exe
+2026-02-20 15:54:28,768 [INFO] OpenAI 클라이언트 초기화 완료: gpt-4o-mini
+2026-02-20 15:54:34,338 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-20 15:54:45,873 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-20 15:54:50,997 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-20 15:55:22,607 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-20 15:55:23,943 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-20 15:56:39,790 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-20 15:56:39,949 [WARNING] item[14]: Question 생성 실패 — 1 validation error for Question
+options
+  Value error, 보기(options)는 최소 2개 이상의 항목이 필요합니다. [type=value_error, input_value=['가. ㈜KITA는 국내 ...입신고 하였다.'], input_type=list]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error
+2026-02-20 15:57:03,576 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-20 15:57:03,589 [INFO] parse_pdf: 총 115개 문제 추출 완료
+2026-02-20 15:57:04,219 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-20 15:57:04,725 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-20 15:57:05,119 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-20 15:57:15,588 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-20 15:57:25,762 [INFO] merge_answers: 107/115개 답 매칭 성공
