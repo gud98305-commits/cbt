@@ -43,3 +43,33 @@ Traceback (most recent call last):
 ModuleNotFoundError: No module named 'models'
 
 2026-02-20 15:28:29,513 [ERROR] 서버 시작 제한 시간을 초과했습니다.
+2026-02-20 15:32:20,972 [INFO] === CBT Mock Test Application Started ===
+2026-02-20 15:32:21,705 [INFO] Uvicorn 서버 시작 - Port: 59981
+2026-02-20 15:32:22,212 [INFO] 서버 준비 완료. 브라우저를 엽니다.
+2026-02-20 15:32:22,214 [INFO] 브라우저 실행 시도: C:\Program Files\Google\Chrome\Application\chrome.exe
+2026-02-20 15:33:39,427 [INFO] OpenAI 클라이언트 초기화 완료: gpt-4o-mini
+2026-02-20 15:33:39,693 [ERROR] 구역 5 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:33:39,694 [ERROR] 구역 2 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:33:39,694 [ERROR] 구역 3 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:33:39,694 [ERROR] 구역 1 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:33:39,694 [ERROR] 구역 4 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:33:39,694 [ERROR] 구역 0 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:33:39,695 [ERROR] 구역 6 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:33:39,696 [INFO] parse_pdf: 총 0개 문제 추출 완료
+2026-02-20 15:33:45,637 [ERROR] 구역 3 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:33:45,638 [ERROR] 구역 4 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:33:45,638 [ERROR] 구역 5 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:33:45,638 [ERROR] 구역 0 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:33:45,639 [ERROR] 구역 1 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:33:45,639 [ERROR] 구역 2 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:33:45,639 [ERROR] 구역 6 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:33:45,640 [INFO] parse_pdf: 총 0개 문제 추출 완료
+2026-02-20 15:34:17,353 [INFO] OpenAI 클라이언트 초기화 완료: gpt-4o-mini
+2026-02-20 15:34:17,542 [ERROR] 구역 3 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:34:17,543 [ERROR] 구역 2 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:34:17,543 [ERROR] 구역 4 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:34:17,543 [ERROR] 구역 5 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:34:17,543 [ERROR] 구역 1 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:34:17,543 [ERROR] 구역 0 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:34:17,544 [ERROR] 구역 6 처리 실패: _extract_questions_from_text() takes 1 positional argument but 2 were given
+2026-02-20 15:34:17,544 [INFO] parse_pdf: 총 0개 문제 추출 완료
