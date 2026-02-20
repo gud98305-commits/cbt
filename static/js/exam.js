@@ -120,7 +120,7 @@ function _renderQuestionArea() {
   const idx = _examState.current_quest_index;
 
   const contextHtml = q.context
-    ? `<div class="context-box"><b>[지문]</b><br>${_esc(q.context)}</div>`
+    ? `<div class="context-box"><b>[지문]</b><br>${_escHtml(q.context)}</div>`
     : '';
 
   const optionsHtml = q.options.map(opt => {
@@ -128,7 +128,7 @@ function _renderQuestionArea() {
     return `
       <li class="option-item${isSelected ? ' selected' : ''}" data-value="${_esc(opt)}">
         <input type="radio" name="q-option" value="${_esc(opt)}" ${isSelected ? 'checked' : ''} />
-        ${_esc(opt)}
+        ${_escHtml(opt)}
       </li>
     `;
   }).join('');
@@ -140,7 +140,7 @@ function _renderQuestionArea() {
     <div class="question-card">
       <span class="question-number-badge">${idx + 1}번 | ${_esc(q.subject)}</span>
       ${contextHtml}
-      <p class="question-text">${_esc(q.question_text)}</p>
+      <p class="question-text">${_escHtml(q.question_text)}</p>
       <ul class="options-list" id="options-list">
         ${optionsHtml}
       </ul>

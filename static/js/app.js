@@ -86,5 +86,14 @@ function _esc(str) {
     .replace(/"/g, '&quot;');
 }
 
+// ── HTML 이스케이프 + 서식 보존 (줄바꿈, 밑줄) ──────────────────────────────
+function _escHtml(str) {
+  if (!str) return '';
+  return _esc(str)
+    .replace(/\[\[u\]\]/g, '<u>')
+    .replace(/\[\[\/u\]\]/g, '</u>')
+    .replace(/\n/g, '<br>');
+}
+
 // ── 초기 렌더 ────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => { render(); });

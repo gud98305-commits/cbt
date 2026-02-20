@@ -100,11 +100,12 @@ def parse_pdf(file_bytes: bytes) -> List[Question]:
                 f"PDF 페이지가 너무 많습니다 ({len(doc)}페이지). 최대 {MAX_PDF_PAGES}페이지까지 지원합니다."
             )
 
-        # 모든 텍스트 추출
+        # 모든 텍스트 추출 (밑줄 감지 포함)
         full_text_with_meta = ""
         empty_pages = 0
         for i in range(len(doc)):
-            page_text = doc.load_page(i).get_text()
+            page = doc.load_page(i)
+            page_text = _extract_text_with_underlines(page)
             if not page_text.strip():
                 empty_pages += 1
             full_text_with_meta += f"\n[PAGE {i+1}]\n{page_text}\n"
@@ -522,6 +523,78 @@ def _normalize_subject(s: str) -> str:
     return re.sub(r"[\s·‧\-_]", "", s).lower()
 
 
+# ── 밑줄 감지 ────────────────────────────────────────────────────────────────
+
+def _extract_text_with_underlines(page) -> str:
+    """
+    페이지 텍스트를 추출하면서 밑줄이 그어진 텍스트를 [[u]]..[[/u]] 마커로 감쌈.
+    PDF 그래픽 레이어의 수평선을 텍스트 스팬과 매칭하여 밑줄을 감지.
+    실패 시 일반 get_text()로 폴백.
+    """
+    plain_text = page.get_text()
+
+    try:
+        drawings = page.get_drawings()
+    except Exception:
+        return plain_text
+
+    # 수평선(밑줄 후보) 수집
+    h_lines = []
+    for path in drawings:
+        for item in path.get("items", []):
+            if item[0] == "l":  # 선분
+                p1, p2 = item[1], item[2]
+                if abs(p1.y - p2.y) < 2 and abs(p1.x - p2.x) > 5:
+                    h_lines.append((min(p1.x, p2.x), max(p1.x, p2.x), (p1.y + p2.y) / 2))
+            elif item[0] == "re":  # 얇은 사각형 (밑줄로 그려진 경우)
+                rect = item[1]
+                if hasattr(rect, "height") and rect.height < 2 and rect.width > 5:
+                    h_lines.append((rect.x0, rect.x1, rect.y1))
+
+    if not h_lines:
+        return plain_text
+
+    # 텍스트 스팬 위치 정보 획득
+    text_dict = page.get_text("dict")
+
+    # 밑줄이 그어진 텍스트 문자열 수집
+    underlined_texts = []
+    for block in text_dict.get("blocks", []):
+        if block.get("type") != 0:
+            continue
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                text = span.get("text", "").strip()
+                if not text or len(text) < 2:
+                    continue
+                bbox = span.get("bbox", (0, 0, 0, 0))
+                x0, y0, x1, y1 = bbox
+                span_width = x1 - x0
+                if span_width < 1:
+                    continue
+
+                for lx0, lx1, ly in h_lines:
+                    # 선이 텍스트 하단 근처에 있어야 함 (5pt 이내)
+                    if abs(ly - y1) <= 5:
+                        overlap = min(x1, lx1) - max(x0, lx0)
+                        if overlap > span_width * 0.5:
+                            underlined_texts.append(text)
+                            break
+
+    if not underlined_texts:
+        return plain_text
+
+    # 긴 것부터 치환 (부분 매칭 방지), 중복 제거
+    underlined_texts = sorted(set(underlined_texts), key=len, reverse=True)
+
+    result = plain_text
+    for ul_text in underlined_texts:
+        if ul_text in result:
+            result = result.replace(ul_text, f"[[u]]{ul_text}[[/u]]", 1)
+
+    return result
+
+
 # ── 내부 함수 ─────────────────────────────────────────────────────────────────
 
 def _match_answer_to_option(answer_text: str, options: List[str]) -> str:
@@ -651,7 +724,8 @@ def _build_system_prompt() -> str:
         "6. 텍스트에 [PAGE X] 마커가 있으면 X를 page_number로 사용하라.\n"
         "7. answer에는 반드시 options 리스트 안의 전체 텍스트를 넣어라. 정답을 모르면 빈 문자열.\n"
         "8. subject 필드에는 과목명을 공백 없이 넣어라 (예: '무역규범', '무역결제', '무역계약', '무역영어').\n"
-        "9. id는 과목 내 문제 번호를 사용하라 (과목별 1번부터)."
+        "9. id는 과목 내 문제 번호를 사용하라 (과목별 1번부터).\n"
+        "10. 텍스트 내에 [[u]]...[[/u]] 마커가 있으면 context와 question_text에 해당 마커를 그대로 보존하라."
     )
 
 
