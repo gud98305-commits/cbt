@@ -141,3 +141,16 @@ options
 2026-02-20 16:49:28,186 [INFO] 결정적 파싱: 120개 답안 추출 (4과목)
 2026-02-20 16:49:28,186 [INFO] parse_answer_pdf: 결정적 파싱 성공 — 120개 답안
 2026-02-20 16:49:58,837 [INFO] merge_answers: 116/120개 답 매칭 성공
+2026-02-20 16:59:52,633 [INFO] === CBT Mock Test Application Started ===
+2026-02-20 16:59:53,414 [INFO] Uvicorn 서버 시작 - Port: 62273
+2026-02-20 16:59:53,888 [INFO] 서버 준비 완료. 브라우저를 엽니다.
+2026-02-20 16:59:53,888 [INFO] 브라우저 실행 시도: C:\Program Files\Google\Chrome\Application\chrome.exe
+2026-02-20 17:00:34,747 [INFO] OpenAI 클라이언트 초기화 완료: gpt-4o-mini
+2026-02-20 17:03:02,946 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-20 17:03:28,416 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-20 17:03:41,313 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-20 17:03:53,899 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-20 17:03:54,005 [INFO] parse_pdf: 총 120개 문제 추출 완료
+2026-02-20 17:03:54,033 [INFO] 결정적 파싱: 120개 답안 추출 (4과목)
+2026-02-20 17:03:54,033 [INFO] parse_answer_pdf: 결정적 파싱 성공 — 120개 답안
+2026-02-20 17:04:01,546 [INFO] merge_answers: 115/120개 답 매칭 성공
