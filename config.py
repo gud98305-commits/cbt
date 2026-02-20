@@ -1,22 +1,20 @@
 import os
-import sys
 
 # 기본 디렉토리 설정
-IF_FROZEN = getattr(sys, "frozen", False)
-BASE_DIR = sys._MEIPASS if IF_FROZEN else os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # 경로 설정
 STATIC_DIR = os.path.join(BASE_DIR, "static")
-APP_DIR = os.path.join(BASE_DIR, "trade_license_cbt")
 LOG_FILE = os.path.join(BASE_DIR, "launch.log")
 
 # 서버 설정
-DEFAULT_HOST = "127.0.0.1"
-DEFAULT_TIMEOUT = 15.0
+DEFAULT_HOST = os.getenv("HOST", "0.0.0.0")
+DEFAULT_PORT = int(os.getenv("PORT", "8000"))
 
 # OpenAI 설정
-MODEL_NAME = "gpt-4o-mini"
+MODEL_NAME = "gpt-4o"
 
-# PDF 파싱 제한
+# PDF 파싱 설정
 MAX_PDF_PAGES = 200
-MAX_SECTION_CHARS = 80000  # ~20K tokens (Korean ~4 chars/token)
+VISION_DPI = 200        # 페이지 이미지 해상도
+PAGES_PER_GROUP = 3     # 비전 API 호출당 페이지 수
