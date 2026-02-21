@@ -18,3 +18,8 @@ MODEL_NAME = "gpt-4o"
 MAX_PDF_PAGES = 200
 VISION_DPI = 200        # 페이지 이미지 해상도
 PAGES_PER_GROUP = 3     # 비전 API 호출당 페이지 수
+
+# 텍스트 우선 파싱 설정
+MIN_CHARS_PER_PAGE = 100    # 페이지당 최소 문자 수 (이하이면 스캔 PDF로 판단 → 비전 폴백)
+MAX_SECTION_CHARS = 80000   # 텍스트 청크 최대 문자 수
+TEXT_PAGES_PER_GROUP = 5    # 텍스트 파싱 시 그룹당 페이지 수 (비전보다 넉넉)

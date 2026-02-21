@@ -1,15 +1,15 @@
 """
 services/pdf_parser.py
 
-PDF 시험지 파싱 서비스 (멀티모달 비전).
+PDF 시험지 파싱 서비스 (텍스트 우선 + 비전 폴백).
 Public API:
-  - parse_pdf(file_bytes, api_key) -> List[Question]      : 문제 PDF 파싱 (비전)
+  - parse_pdf(file_bytes, api_key) -> List[Question]      : 문제 PDF 파싱
   - parse_answer_pdf(file_bytes, api_key) -> List[dict]    : 답지 PDF 파싱 (텍스트)
   - merge_answers(questions, answers) -> List[Question] : 문제 + 답지 병합
 
 설계 원칙:
-- PDF 페이지를 이미지로 변환 → GPT-4o 비전 API로 파싱
-- 3페이지 단위 그룹으로 지문-문제 연결 유지
+- 1단계: PDF 텍스트 직접 추출 → GPT-4o 텍스트 모드 파싱 (저비용·고속)
+- 2단계: 텍스트 부족 시(스캔 PDF) → 이미지 변환 → GPT-4o 비전 API 폴백
 - 병렬 API 호출로 속도 최적화
 - 실패는 해당 배치만 스킵, 전체 중단 없음
 """
@@ -26,7 +26,10 @@ import fitz  # PyMuPDF
 from openai import OpenAI, RateLimitError, APIError
 from pydantic import ValidationError
 
-from config import MODEL_NAME, MAX_PDF_PAGES, VISION_DPI, PAGES_PER_GROUP
+from config import (
+    MODEL_NAME, MAX_PDF_PAGES, VISION_DPI, PAGES_PER_GROUP,
+    MIN_CHARS_PER_PAGE, MAX_SECTION_CHARS, TEXT_PAGES_PER_GROUP,
+)
 from trade_license_cbt.models.question_model import Question
 
 # ── 로거 설정 ────────────────────────────────────────────────────────────────
@@ -65,8 +68,8 @@ _CIRCLED_NUMBERS = {
 
 def parse_pdf(file_bytes: bytes, api_key: str = "") -> List[Question]:
     """
-    PDF 바이트 → Question 리스트 (멀티모달 비전 파싱).
-    각 페이지를 이미지로 변환하여 GPT-4o 비전 API로 문제를 추출.
+    PDF 바이트 → Question 리스트.
+    전략: 텍스트 추출 우선 → 스캔 PDF인 경우 비전 API 폴백.
     """
     if not file_bytes:
         raise ValueError("PDF 파일이 비어 있습니다.")
@@ -87,50 +90,237 @@ def parse_pdf(file_bytes: bytes, api_key: str = "") -> List[Question]:
                 f"PDF 페이지가 너무 많습니다 ({len(doc)}페이지). 최대 {MAX_PDF_PAGES}페이지까지 지원합니다."
             )
 
-        # 각 페이지를 이미지(PNG base64)로 변환
-        page_images: List[str] = []
-        for i in range(len(doc)):
-            page = doc.load_page(i)
-            pix = page.get_pixmap(dpi=VISION_DPI)
-            png_bytes = pix.tobytes("png")
-            b64 = base64.b64encode(png_bytes).decode("ascii")
-            page_images.append(b64)
-            logger.info(f"페이지 {i+1}/{len(doc)} 이미지 변환 완료 ({len(png_bytes)//1024}KB)")
+        # 1단계: 텍스트 추출 시도
+        page_texts = _extract_page_texts(doc)
+        use_text_mode = _is_text_pdf(page_texts)
 
-        # 페이지 그룹 생성 (PAGES_PER_GROUP 단위)
-        groups: List[List[tuple[int, str]]] = []
-        for i in range(0, len(page_images), PAGES_PER_GROUP):
-            group = [(i + j + 1, page_images[i + j])
-                     for j in range(min(PAGES_PER_GROUP, len(page_images) - i))]
-            groups.append(group)
+        if use_text_mode:
+            logger.info(f"parse_pdf: 텍스트 모드 (평균 {_avg_chars(page_texts):.0f}자/페이지)")
+            questions = _parse_pdf_text_mode(page_texts, client)
+            if questions:
+                logger.info(f"parse_pdf: 텍스트 모드 성공 — {len(questions)}개 문제 추출")
+                return questions
+            logger.warning("parse_pdf: 텍스트 모드 실패, 비전 폴백 시도")
 
-        logger.info(f"parse_pdf: {len(doc)}페이지 → {len(groups)}그룹 ({PAGES_PER_GROUP}페이지/그룹)")
-
-        # 각 그룹을 병렬로 비전 API에 전송
-        all_questions: List[Question] = []
-        with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
-            future_map = {
-                executor.submit(_extract_questions_from_images, group, client): idx
-                for idx, group in enumerate(groups)
-            }
-            results = {}
-            for future in as_completed(future_map):
-                idx = future_map[future]
-                try:
-                    results[idx] = future.result()
-                except Exception as e:
-                    logger.error(f"그룹 {idx} 처리 실패: {e}")
-                    results[idx] = []
-
-            for idx in sorted(results.keys()):
-                all_questions.extend(results[idx])
-
-        logger.info(f"parse_pdf: 총 {len(all_questions)}개 문제 추출 완료")
-        return all_questions
+        # 2단계: 비전 API 폴백
+        logger.info(f"parse_pdf: 비전 모드 ({len(doc)}페이지)")
+        return _parse_pdf_vision_mode(doc, client)
 
     finally:
         if doc is not None:
             doc.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 텍스트 모드 파싱 (문제 PDF용)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _extract_page_texts(doc) -> List[tuple[int, str]]:
+    """PDF 문서에서 페이지별 텍스트를 추출. [(page_num, text), ...]"""
+    page_texts = []
+    for i in range(len(doc)):
+        text = doc.load_page(i).get_text()
+        page_texts.append((i + 1, text))
+    return page_texts
+
+
+def _is_text_pdf(page_texts: List[tuple[int, str]]) -> bool:
+    """텍스트 PDF 여부 판단. 평균 문자 수가 MIN_CHARS_PER_PAGE 이상이면 텍스트 PDF."""
+    if not page_texts:
+        return False
+    avg = _avg_chars(page_texts)
+    return avg >= MIN_CHARS_PER_PAGE
+
+
+def _avg_chars(page_texts: List[tuple[int, str]]) -> float:
+    """페이지 텍스트의 평균 비공백 문자 수."""
+    if not page_texts:
+        return 0.0
+    total = sum(len(t.strip()) for _, t in page_texts)
+    return total / len(page_texts)
+
+
+def _parse_pdf_text_mode(
+    page_texts: List[tuple[int, str]],
+    client: OpenAI,
+) -> List[Question]:
+    """텍스트 기반 문제 추출. 페이지 그룹별 병렬 처리."""
+    # 페이지 그룹 생성
+    groups: List[List[tuple[int, str]]] = []
+    for i in range(0, len(page_texts), TEXT_PAGES_PER_GROUP):
+        group = page_texts[i:i + TEXT_PAGES_PER_GROUP]
+        groups.append(group)
+
+    # 큰 그룹 분할 (MAX_SECTION_CHARS 초과 시)
+    split_groups: List[List[tuple[int, str]]] = []
+    for group in groups:
+        total_chars = sum(len(t) for _, t in group)
+        if total_chars > MAX_SECTION_CHARS and len(group) > 1:
+            # 한 페이지씩 분할
+            for page in group:
+                split_groups.append([page])
+        else:
+            split_groups.append(group)
+
+    logger.info(
+        f"텍스트 모드: {len(page_texts)}페이지 → {len(split_groups)}그룹 "
+        f"({TEXT_PAGES_PER_GROUP}페이지/그룹)"
+    )
+
+    all_questions: List[Question] = []
+    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
+        future_map = {
+            executor.submit(_extract_questions_from_text, group, client): idx
+            for idx, group in enumerate(split_groups)
+        }
+        results = {}
+        for future in as_completed(future_map):
+            idx = future_map[future]
+            try:
+                results[idx] = future.result()
+            except Exception as e:
+                logger.error(f"텍스트 그룹 {idx} 처리 실패: {e}")
+                results[idx] = []
+
+        for idx in sorted(results.keys()):
+            all_questions.extend(results[idx])
+
+    return all_questions
+
+
+def _extract_questions_from_text(
+    page_group: List[tuple[int, str]],
+    client: OpenAI,
+) -> List[Question]:
+    """페이지 텍스트 그룹 → GPT-4o 텍스트 모드 → Question 리스트."""
+    system_prompt = _build_text_system_prompt()
+
+    page_nums = [p[0] for p in page_group]
+    logger.info(f"텍스트 파싱: 페이지 {page_nums}")
+
+    # 페이지별로 태그 포함 텍스트 구성
+    tagged_text = ""
+    for page_num, text in page_group:
+        tagged_text += f"\n[PAGE {page_num}]\n{text}\n"
+
+    char_count = len(tagged_text)
+    est_tokens = char_count // 4
+    logger.info(f"텍스트 파싱: {char_count}자 (≈{est_tokens} 토큰)")
+
+    raw = _call_openai(system_prompt, tagged_text, client)
+    if raw is None:
+        return []
+
+    questions = _parse_response_to_questions(raw, page_nums)
+    if questions is not None:
+        return questions
+
+    # 재시도
+    raw = _call_openai(
+        system_prompt + "\n\n⚠️ 반드시 유효한 JSON 객체만 반환하세요.",
+        tagged_text, client,
+    )
+    if raw:
+        questions = _parse_response_to_questions(raw, page_nums)
+        if questions is not None:
+            return questions
+
+    logger.error(f"텍스트 파싱 실패: 페이지 {page_nums}")
+    return []
+
+
+def _build_text_system_prompt() -> str:
+    """텍스트 모드 문제 추출용 시스템 프롬프트."""
+    return (
+        "너는 한국 자격증 시험 PDF에서 추출된 텍스트를 분석하여 객관식 문제를 파싱하는 전문가다.\n"
+        "\n"
+        "[임무]\n"
+        "제공된 시험지 텍스트에서 객관식 문제를 모두 찾아 JSON으로 반환하라.\n"
+        "텍스트는 PDF에서 직접 추출되었으므로 원본 레이아웃과 다를 수 있다.\n"
+        "\n"
+        "[출력 형식]\n"
+        '반드시 {"questions": [...]} 형태의 JSON 객체로만 응답하라.\n'
+        "마크다운, 설명, 인사말 금지.\n"
+        "\n"
+        "[각 문제 객체의 필드]\n"
+        "{\n"
+        '  "id": (int) 문제 번호,\n'
+        '  "subject": (str) 과목명. 공백 없이 (예: "무역규범", "무역결제", "무역계약", "무역영어"),\n'
+        '  "context": (str|null) 지문. 없으면 null,\n'
+        '  "question_text": (str) 문제 본문,\n'
+        '  "options": (list[str]) 보기 목록. 원문 그대로,\n'
+        '  "answer": (str) 정답. 텍스트에 정답이 명시되어 있을 때만. 없으면 "",\n'
+        '  "explanation": (str) 해설. 없으면 "",\n'
+        '  "page_number": (int) 해당 문제가 있는 페이지 번호 ([PAGE N] 태그 참조)\n'
+        "}\n"
+        "\n"
+        "[규칙]\n"
+        '1. 문제가 없으면 {"questions": []}을 반환하라.\n'
+        "2. 보기 번호 형식은 원문을 따르라 (①②③④ 등).\n"
+        "3. 하나의 지문에 여러 문제가 딸린 경우, 각 문제마다 context에 동일 지문 전체를 넣어라.\n"
+        "4. options 배열 원소 수는 원문 보기 개수와 정확히 일치해야 한다.\n"
+        "5. question_text에는 보기를 포함하지 마라.\n"
+        "6. answer에는 반드시 options 리스트 안의 전체 텍스트를 넣어라. 정답을 모르면 빈 문자열.\n"
+        "7. id는 과목 내 문제 번호를 사용하라 (과목별 1번부터).\n"
+        "8. [PAGE N] 태그를 참고하여 각 문제의 page_number를 정확히 기입하라.\n"
+        "\n"
+        "[텍스트 특성 주의사항]\n"
+        "- PDF 텍스트 추출 시 줄바꿈, 공백이 원본과 다를 수 있다. 문맥으로 판단하라.\n"
+        "- 보기가 한 줄에 이어 붙어 있을 수 있다. ①②③④ 기호로 분리하라.\n"
+        "- 과목 구분은 '무역규범', '무역결제', '무역계약', '무역영어', '무역물류' 등의 키워드로 판단하라.\n"
+        "- 페이지 경계([PAGE N])에서 문제나 지문이 잘릴 수 있다. 전후 맥락을 연결하라.\n"
+        "\n"
+        "[지문 추출]\n"
+        "지문(context)이란 문제 앞에 제시되는 참고 텍스트다:\n"
+        "- 영문 지문, 계약서 조항, 사례, 조문, 표, 상황 설명 등이 해당된다.\n"
+        "- 여러 문제가 하나의 지문을 공유하면 각 문제의 context에 동일 지문 전체를 넣어라.\n"
+        "- 지문이 없는 단독 문제는 context를 null로 하라.\n"
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 비전 모드 파싱 (스캔 PDF 폴백)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _parse_pdf_vision_mode(doc, client: OpenAI) -> List[Question]:
+    """비전 API를 사용한 PDF 파싱 (스캔 PDF용 폴백)."""
+    page_images: List[str] = []
+    for i in range(len(doc)):
+        page = doc.load_page(i)
+        pix = page.get_pixmap(dpi=VISION_DPI)
+        png_bytes = pix.tobytes("png")
+        b64 = base64.b64encode(png_bytes).decode("ascii")
+        page_images.append(b64)
+        logger.info(f"페이지 {i+1}/{len(doc)} 이미지 변환 완료 ({len(png_bytes)//1024}KB)")
+
+    groups: List[List[tuple[int, str]]] = []
+    for i in range(0, len(page_images), PAGES_PER_GROUP):
+        group = [(i + j + 1, page_images[i + j])
+                 for j in range(min(PAGES_PER_GROUP, len(page_images) - i))]
+        groups.append(group)
+
+    logger.info(f"비전 모드: {len(doc)}페이지 → {len(groups)}그룹 ({PAGES_PER_GROUP}페이지/그룹)")
+
+    all_questions: List[Question] = []
+    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
+        future_map = {
+            executor.submit(_extract_questions_from_images, group, client): idx
+            for idx, group in enumerate(groups)
+        }
+        results = {}
+        for future in as_completed(future_map):
+            idx = future_map[future]
+            try:
+                results[idx] = future.result()
+            except Exception as e:
+                logger.error(f"비전 그룹 {idx} 처리 실패: {e}")
+                results[idx] = []
+
+        for idx in sorted(results.keys()):
+            all_questions.extend(results[idx])
+
+    logger.info(f"비전 모드: 총 {len(all_questions)}개 문제 추출 완료")
+    return all_questions
 
 
 def parse_answer_pdf(file_bytes: bytes, api_key: str = "") -> List[dict]:
