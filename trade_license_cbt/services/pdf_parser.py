@@ -285,8 +285,8 @@ def _build_vision_system_prompt() -> str:
         "[각 문제 객체의 필드]\n"
         "{\n"
         '  "id": (int) 문제 번호,\n'
-        '  "subject": (str) 과목명. 반드시 다음 4개 중 하나만 사용: "무역규범", "무역결제", "무역계약", "무역영어". '
-        '이 외의 과목명을 만들거나 세분화하지 마라.,\n'
+        '  "subject": (str) 과목명. 시험지 PDF에 표기된 과목명을 그대로 사용하라. '
+        '임의로 세분화하거나 새로운 과목명을 만들지 마라.,\n'
         '  "context": (str|null) 지문. 없으면 null,\n'
         '  "question_text": (str) 문제 본문,\n'
         '  "options": (list[str]) 보기 목록. 원문 그대로,\n'
