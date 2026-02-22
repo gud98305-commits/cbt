@@ -206,6 +206,7 @@ async def get_exam_state(request: Request):
         "total": len(questions),
         "answered_count": len(exam_state.user_answers),
         "question_ids": [q.id for q in questions],
+        "question_subjects": [q.subject for q in questions],
     }
 
 

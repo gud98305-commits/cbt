@@ -95,5 +95,23 @@ function _escHtml(str) {
     .replace(/\n/g, '<br>');
 }
 
+// ── 서식 보존 렌더링 (밑줄 + HTML 표 허용) ──────────────────────────────────
+function _renderFormattedText(str) {
+  if (!str) return '';
+  // HTML 표 태그를 보존하기 위해 <table> 블록을 먼저 분리
+  var parts = String(str).split(/(<table[\s\S]*?<\/table>)/gi);
+  var result = '';
+  for (var i = 0; i < parts.length; i++) {
+    if (/^<table/i.test(parts[i])) {
+      // 표는 그대로 삽입 (안전한 태그만 허용)
+      result += parts[i]
+        .replace(/<(?!\/?(?:table|tr|td|th|thead|tbody|tfoot|caption|colgroup|col)\b)[^>]*>/gi, '');
+    } else {
+      result += _escHtml(parts[i]);
+    }
+  }
+  return result;
+}
+
 // ── 초기 렌더 ────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => { render(); });

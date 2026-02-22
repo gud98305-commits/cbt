@@ -90,16 +90,35 @@ function _renderSidebar() {
   if (!grid) return;
 
   const qids = _examState.question_ids || [];
-  let html = '';
+  const qsubjects = _examState.question_subjects || [];
+
+  // 과목별 그룹핑
+  const groups = [];
+  let currentSubject = null;
   for (let i = 0; i < total; i++) {
-    const isCurrent = i === _examState.current_quest_index;
-    const qid = qids[i];
-    const isAnswered = qid !== undefined && (_examState.user_answers[String(qid)] !== undefined);
-    let cls = 'nav-btn';
-    if (isCurrent && isAnswered) cls += ' answered current';
-    else if (isCurrent) cls += ' current';
-    else if (isAnswered) cls += ' answered';
-    html += `<button class="${cls}" data-idx="${i}">${i + 1}</button>`;
+    const subj = qsubjects[i] || '기타';
+    if (subj !== currentSubject) {
+      groups.push({ subject: subj, items: [] });
+      currentSubject = subj;
+    }
+    groups[groups.length - 1].items.push(i);
+  }
+
+  let html = '';
+  for (const group of groups) {
+    html += `<div class="nav-subject-label">${_esc(group.subject)}</div>`;
+    html += `<div class="nav-grid-group">`;
+    for (const i of group.items) {
+      const isCurrent = i === _examState.current_quest_index;
+      const qid = qids[i];
+      const isAnswered = qid !== undefined && (_examState.user_answers[String(qid)] !== undefined);
+      let cls = 'nav-btn';
+      if (isCurrent && isAnswered) cls += ' answered current';
+      else if (isCurrent) cls += ' current';
+      else if (isAnswered) cls += ' answered';
+      html += `<button class="${cls}" data-idx="${i}">${qid}</button>`;
+    }
+    html += `</div>`;
   }
   grid.innerHTML = html;
 
@@ -120,17 +139,15 @@ function _renderQuestionArea() {
   const idx = _examState.current_quest_index;
 
   const contextHtml = q.context
-    ? `<div class="context-box"><b>[지문]</b><br>${_escHtml(q.context)}</div>`
+    ? '<div class="context-box"><b>[지문]</b><br>' + _renderFormattedText(q.context) + '</div>'
     : '';
 
   const optionsHtml = q.options.map(opt => {
     const isSelected = opt === q.saved_answer;
-    return `
-      <li class="option-item${isSelected ? ' selected' : ''}" data-value="${_esc(opt)}">
-        <input type="radio" name="q-option" value="${_esc(opt)}" ${isSelected ? 'checked' : ''} />
-        ${_escHtml(opt)}
-      </li>
-    `;
+    return '<li class="option-item' + (isSelected ? ' selected' : '') + '" data-value="' + _esc(opt) + '">'
+      + '<input type="radio" name="q-option" value="' + _esc(opt) + '"' + (isSelected ? ' checked' : '') + ' />'
+      + _renderFormattedText(opt)
+      + '</li>';
   }).join('');
 
   const area = document.getElementById('question-area');
@@ -138,9 +155,9 @@ function _renderQuestionArea() {
 
   area.innerHTML = `
     <div class="question-card">
-      <span class="question-number-badge">${idx + 1}번 | ${_esc(q.subject)}</span>
+      <span class="question-number-badge">${_esc(q.subject)} ${q.id}번</span>
       ${contextHtml}
-      <p class="question-text">${_escHtml(q.question_text)}</p>
+      <p class="question-text">${_renderFormattedText(q.question_text)}</p>
       <ul class="options-list" id="options-list">
         ${optionsHtml}
       </ul>
@@ -148,7 +165,7 @@ function _renderQuestionArea() {
   `;
 
   const label = document.getElementById('nav-label');
-  if (label) label.textContent = `${idx + 1} / ${total}`;
+  if (label) label.textContent = q.subject + ' ' + q.id + '번 (' + (idx + 1) + '/' + total + ')';
 
   const prevBtn = document.getElementById('prev-btn');
   const nextBtn = document.getElementById('next-btn');

@@ -214,10 +214,24 @@ body {
 
 /* ── 문제 번호 그리드 ── */
 .nav-grid {
+    margin-bottom: 16px;
+}
+.nav-subject-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #4a7fcb;
+    margin: 10px 0 4px 0;
+    padding: 2px 0;
+    border-bottom: 1px solid #e2e8f0;
+}
+.nav-subject-label:first-child {
+    margin-top: 0;
+}
+.nav-grid-group {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     gap: 6px;
-    margin-bottom: 16px;
+    margin-bottom: 6px;
 }
 .nav-btn {
     width: 100%;
@@ -261,6 +275,22 @@ body {
     font-size: 0.9rem;
     color: #374151;
     line-height: 1.7;
+}
+.context-box table, .question-card table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 8px 0;
+    font-size: 0.85rem;
+}
+.context-box th, .context-box td,
+.question-card th, .question-card td {
+    border: 1px solid #b0c4de;
+    padding: 6px 10px;
+    text-align: left;
+}
+.context-box th, .question-card th {
+    background: #d6e4f0;
+    font-weight: 700;
 }
 .question-number-badge {
     display: inline-block;
