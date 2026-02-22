@@ -183,7 +183,7 @@ async def get_question(index: int, request: Request):
 
     q = questions[index]
     exam_state: ExamState = session.get(sid, "exam_state")
-    saved_answer = exam_state.user_answers.get(q.id, "") if exam_state else ""
+    saved_answer = exam_state.user_answers.get(index, "") if exam_state else ""
 
     d = _question_to_dict(q)
     d.update({"saved_answer": saved_answer, "index": index, "total": len(questions)})
@@ -272,9 +272,11 @@ async def get_results(request: Request):
         raise HTTPException(status_code=400, detail="시험이 아직 제출되지 않았습니다.")
 
     incorrect_data = []
+    incorrect_indices = {id(q): i for i, q in enumerate(questions)}
     for q in incorrect:
         d = _question_to_dict(q)
-        d["user_answer"] = exam_state.user_answers.get(q.id, "")
+        idx = incorrect_indices.get(id(q), -1)
+        d["user_answer"] = exam_state.user_answers.get(idx, "")
         incorrect_data.append(d)
 
     return {

@@ -285,7 +285,8 @@ def _build_vision_system_prompt() -> str:
         "[각 문제 객체의 필드]\n"
         "{\n"
         '  "id": (int) 문제 번호,\n'
-        '  "subject": (str) 과목명. 공백 없이 (예: "무역규범", "무역결제", "무역계약", "무역영어"),\n'
+        '  "subject": (str) 과목명. 반드시 다음 4개 중 하나만 사용: "무역규범", "무역결제", "무역계약", "무역영어". '
+        '이 외의 과목명을 만들거나 세분화하지 마라.,\n'
         '  "context": (str|null) 지문. 없으면 null,\n'
         '  "question_text": (str) 문제 본문,\n'
         '  "options": (list[str]) 보기 목록. 원문 그대로,\n'
@@ -318,8 +319,11 @@ def _build_vision_system_prompt() -> str:
         '<table><tr><th>구분</th><th>내용</th></tr>'
         '<tr><td>A</td><td>설명1</td></tr>'
         '<tr><td>B</td><td>설명2</td></tr></table>\n'
-        "표가 지문(context) 안에 있으면 context에, 문제 본문에 있으면 question_text에,\n"
-        "보기 안에 있으면 options에 표를 포함하라.\n"
+        "표가 지문(context) 안에 있으면 context에, 문제 본문에 있으면 question_text에 넣어라.\n"
+        "★ 표를 options 안에 넣지 마라. 보기는 항상 순수 텍스트여야 한다.\n"
+        "표 안에 빈칸(A, B, C 등)이 있고 보기에서 빈칸 내용을 고르는 문제라면,\n"
+        "표 전체를 context에 넣고 보기는 텍스트로만 작성하라.\n"
+        "예: options = ['① C group - D group - D group', '② D group - F group - C group']\n"
         "\n"
         "[텍스트 정확성]\n"
         "- 영어 텍스트(무역영어 지문, 계약서 조항, 약어 등)는 이미지에 보이는 그대로 정확히 옮겨라. "

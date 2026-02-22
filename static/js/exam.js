@@ -111,7 +111,7 @@ function _renderSidebar() {
     for (const i of group.items) {
       const isCurrent = i === _examState.current_quest_index;
       const qid = qids[i];
-      const isAnswered = qid !== undefined && (_examState.user_answers[String(qid)] !== undefined);
+      const isAnswered = _examState.user_answers[String(i)] !== undefined;
       let cls = 'nav-btn';
       if (isCurrent && isAnswered) cls += ' answered current';
       else if (isCurrent) cls += ' current';
@@ -178,7 +178,7 @@ function _renderQuestionArea() {
       document.querySelectorAll('.option-item').forEach(el => el.classList.remove('selected'));
       item.classList.add('selected');
       const val = item.dataset.value;
-      _saveAnswer(q.id, val);
+      _saveAnswer(idx, val);
     });
   });
 }
