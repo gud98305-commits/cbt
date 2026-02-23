@@ -117,28 +117,28 @@ function _renderWrongAnswers(incorrect_questions) {
     ${incorrect_questions.map((q, i) => {
       const userAns = q.user_answer || '미응답';
       const contextHtml = q.context
-        ? `<div class="context-box"><b>[지문]</b><br>${_escHtml(q.context)}</div>`
+        ? '<div class="context-box"><b>[지문]</b><br>' + _renderFormattedText(q.context) + '</div>'
         : '';
       const optsHtml = q.options.map(opt => {
         const isCorrect = opt === q.answer;
         const isUser = opt === q.user_answer;
-        if (isCorrect) return `<p class="opt-correct">O ${_escHtml(opt)}</p>`;
-        if (isUser) return `<p class="opt-user-wrong">X ${_escHtml(opt)}</p>`;
-        return `<p class="opt-normal">&nbsp;&nbsp;&nbsp;${_escHtml(opt)}</p>`;
+        if (isCorrect) return '<p class="opt-correct">O ' + _renderFormattedText(opt) + '</p>';
+        if (isUser) return '<p class="opt-user-wrong">X ' + _renderFormattedText(opt) + '</p>';
+        return '<p class="opt-normal">&nbsp;&nbsp;&nbsp;' + _renderFormattedText(opt) + '</p>';
       }).join('');
       const explHtml = q.explanation
-        ? `<div class="explanation-box"><b>해설</b>: ${_escHtml(q.explanation)}</div>`
+        ? '<div class="explanation-box"><b>해설</b>: ' + _renderFormattedText(q.explanation) + '</div>'
         : '';
       return `
         <div class="wrong-item" id="wrong-${i}">
           <div class="wrong-header" data-idx="${i}">
-            <span>문제 ${q.id} | ${_esc(q.subject)} | 내 답: ${_esc(userAns)} → 정답: ${_esc(q.answer || '없음')}</span>
+            <span>${_esc(q.subject)} ${q.id}번 | 내 답: ${_esc(userAns)} → 정답: ${_esc(q.answer || '없음')}</span>
             <span class="chevron">▼</span>
           </div>
           <div class="wrong-body">
             ${contextHtml}
             <div class="question-card" style="margin-bottom:12px;">
-              <p style="font-size:1rem; font-weight:600; line-height:1.7; margin:0;">${_escHtml(q.question_text)}</p>
+              <p style="font-size:1rem; font-weight:600; line-height:1.7; margin:0;">${_renderFormattedText(q.question_text)}</p>
             </div>
             ${optsHtml}
             ${explHtml}

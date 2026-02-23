@@ -1,0 +1,13 @@
+.git
+.claude
+.vscode
+.bkit
+.streamlit
+docs
+__pycache__
+*.pyc
+*.log
+*.spec
+launch.vbs
+test_launch.bat
+.python-version
